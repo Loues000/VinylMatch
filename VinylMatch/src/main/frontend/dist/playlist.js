@@ -197,17 +197,7 @@ function renderPlaylist(playlist) {
                 terms.push(String(track.releaseYear));
             // streng auf Vinyl einschränken, konkurrierende Formate ausschließen
             const strictTokens = [
-                "(lp OR vinyl OR schallplatte)",
-                "-cd",
-                "-cds",
-                "-cassette",
-                "-mc",
-                "-kassette",
-                "-dvd",
-                "-bluray",
-                "-box",
-                "-boxset",
-                "-minidisc",
+                "(lp OR vinyl OR schallplatte)"
             ];
             const qBase = encodeURIComponent([...terms, ...strictTokens].join(" "));
             const vendors = [
