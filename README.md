@@ -36,10 +36,5 @@ API
     GET /api/playlist?id={spotifyPlaylistId} → playlist JSON (name, cover, url, tracks with album/artist/year/cover/Discogs URL)
     POST /api/discogs/search → JSON { artist, album, releaseYear?, track? } → { url } if matched
 
-Privacy and security
-
-    No secrets in code; store credentials locally or as environment variables
-    OAuth tokens saved locally under ~/VinylMatch/spotify.tokens
-    No server-side user data storage; “recents” are client-side in localStorage
 
 License MIT License. Contributions welcome. Please do not include credentials or tokens in commits or issues.
