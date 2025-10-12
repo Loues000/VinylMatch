@@ -45,3 +45,6 @@ build/
 node_modules/
 target/
 dist/
+
+# Spotify-Zugangsdaten nicht pushen
+spotify.properties
