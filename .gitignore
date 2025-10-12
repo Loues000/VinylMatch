@@ -44,7 +44,7 @@ build/
 # Build/Dependency
 node_modules/
 target/
-dist/
+src/main/frontend/bin/
 
 # Spotify-Zugangsdaten nicht pushen
 spotify.properties
