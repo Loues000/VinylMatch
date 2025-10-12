@@ -48,3 +48,4 @@ dist/
 
 # Spotify-Zugangsdaten nicht pushen
 spotify.properties
+spotify.tokens
