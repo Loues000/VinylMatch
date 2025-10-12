@@ -1,0 +1,71 @@
+<!-- Header fragment injected into the #header container -->
+<style>
+  #header {
+    position: fixed;     /* stay at top while scrolling */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 60px;
+    padding: 0 24px;
+    background-color: #333;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* left group and right group */
+    z-index: 9999;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    box-sizing: border-box;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 24px; /* space between logo and left nav */
+    flex: 1;
+    min-width: 0;
+  }
+
+  .logo {
+    font-size: 24px;
+    font-weight: bold;
+  }
+
+  .navigation {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .navigation li {
+    margin-right: 32px;
+  }
+
+  /* On the right we usually have fewer items; spacing could use left margin */
+  .navigation-right li {
+    margin-right: 10px;
+    margin-left: 32px;
+  }
+
+  .navigation a {
+    color: #fff;
+    font-weight: bold;
+    text-decoration: none;
+  }
+
+  .navigation a:hover {
+    color: #ccc;
+  }
+</style>
+
+<div class="header-left">
+  <div class="logo">VINYL MATCH</div>
+  <ul class="navigation navigation-left">
+    <li><a href="/home.html">Home</a></li>
+    <li><a href="/playlist.html">Playlist</a></li>
+  </ul>
+</div>
+<ul class="navigation navigation-right">
+  <li><a href="/about.html">About</a></li>
+</ul>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VINYL MATCH — Home</title>
+  <style>
+    :root {
+      --bg: #f5f5f5;
+      --text: #111;
+      --muted: #666;
+      --accent: #333;
+      --radius: 12px;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    body {
+      padding: 20px;
+      padding-top: 80px; /* keep space for fixed header */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Header container provided by injected fragment */
+    #header { }
+
+    .page-container {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      position: fixed;
+      top: 90px;
+      left: 20px;
+      width: 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .sidebar h3 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+      color: var(--accent);
+    }
+    .recent-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .recent-item {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 8px;
+      align-items: center;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+      padding: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+    }
+    .recent-item img {
+      width: 56px;
+      height: 56px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #eee;
+    }
+    .recent-item .title {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .hero {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      margin-top: 10px;
+    }
+
+    .hero img {
+      width: min(60vw, 420px);
+      height: auto;
+      border-radius: var(--radius);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+      object-fit: cover;
+      background: #ddd;
+    }
+
+    .paste-panel {
+      width: min(100%, 720px);
+      margin: 0 auto;
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .paste-panel h2 {
+      margin: 0 0 6px 0;
+      font-size: 18px;
+      color: var(--accent);
+    }
+
+    .paste-panel p.help {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .input-row {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .input-row textarea {
+      width: 97%;
+      min-height: 56px; /* small text window */
+      max-height: 140px;
+      resize: vertical;
+      padding: 10px 12px;
+      font-size: 14px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      outline: none;
+      background: #fafafa;
+    }
+
+    .input-row textarea:focus {
+      border-color: #999;
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.04);
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      appearance: none;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      transition: transform 0.02s ease-in-out, box-shadow 0.2s ease-in-out, background 0.2s ease-in-out;
+    }
+
+    .btn:hover {
+      background: #222;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+    /* Center main column content */
+    main {
+      width: min(100%, 720px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+<div id="header"></div>
+
+<div class="page-container">
+  <aside class="sidebar">
+    <h3>Zuletzt geöffnet</h3>
+    <div id="recent-list" class="recent-list"></div>
+  </aside>
+
+  <main>
+    <div class="hero">
+      <!-- Replace src with your hero/brand image -->
+      <img src="/design/VM_Logo.png" alt="VINYL MATCH" onerror="this.style.display='none'" />
+    </div>
+
+    <div class="paste-panel">
+      <h2>Paste your Spotify playlist link</h2>
+      <div class="input-row">
+        <textarea id="playlist-url" placeholder="https://open.spotify.com/playlist/…"></textarea>
+        <div class="actions">
+          <button class="btn" id="use-link" type="button">Use link</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Load existing module which injects the shared header -->
+<script type="module" src="/dist/main.js"></script>
+</body>
+</html>
