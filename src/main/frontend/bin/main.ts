@@ -1,6 +1,6 @@
-import { injectHeader } from "./common/header";
+import { injectHeader } from "./header";
 
-import { loadPlaylist } from "./playlist.js";
+import { loadPlaylist } from "./playlist";
 
 window.addEventListener("DOMContentLoaded", () => {
   injectHeader();
