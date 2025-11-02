@@ -36,6 +36,7 @@ public class DiscogsService {
 
     // Sehr einfacher In-Memory-Cache (Artist|Album|Year -> URI)
     private final Map<String, String> cache = new ConcurrentHashMap<>();
+    private final Map<String, String> barcodeCache = new ConcurrentHashMap<>();
 
     public DiscogsService(String token, String userAgent) {
         this.token = token;
@@ -58,20 +59,35 @@ public class DiscogsService {
     }
 
     public Optional<String> findAlbumUri(String artist, String album, Integer releaseYear, String trackTitle, String barcode) {
-        if (barcode != null && !barcode.isBlank()) {
-            try {
-                Optional<String> byCode = searchByBarcode(barcode);
-                if (byCode.isPresent()) return byCode;
-            } catch (Exception ignored) {}
-        }
-        if (token == null || token.isBlank()) {
-            return Optional.empty();
-        }
         final String origArtist = artist == null ? null : artist.trim();
         final String origAlbum = album == null ? null : album.trim();
         final String origTrack = trackTitle == null ? null : trackTitle.trim();
         final Integer year = releaseYear;
         final String cacheKey = (origArtist == null ? "" : origArtist) + "|" + (origAlbum == null ? "" : origAlbum) + "|" + (year == null ? "" : year);
+        if (barcode != null && !barcode.isBlank()) {
+            String cachedBarcodeUrl = barcodeCache.get(barcode);
+            if (cachedBarcodeUrl != null) {
+                return Optional.of(cachedBarcodeUrl);
+            }
+            if (token != null && !token.isBlank()) {
+                try {
+                    Optional<String> byCode = searchByBarcode(barcode);
+                    if (byCode.isPresent()) {
+                        String url = byCode.get();
+                        barcodeCache.put(barcode, url);
+                        if ((origArtist != null && !origArtist.isBlank())
+                                || (origAlbum != null && !origAlbum.isBlank())
+                                || year != null) {
+                            cache.put(cacheKey, url);
+                        }
+                        return Optional.of(url);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        if (token == null || token.isBlank()) {
+            return Optional.empty();
+        }
 
         String cached = cache.get(cacheKey);
         if (cached != null) {

@@ -63,10 +63,29 @@ function renderPlaylist(playlist) {
     headerInfo.appendChild(subtitleDiv);
     header.appendChild(coverImg);
     header.appendChild(headerInfo);
-    // Trackliste erzeugen
+    // Vorherige Virtualisierung bereinigen, falls vorhanden
+    container.classList.remove("virtualized-playlist");
+    if (typeof container._virtualCleanup === "function") {
+        try {
+            container._virtualCleanup();
+        }
+        catch (_a) {
+            // Ignoriere Fehler beim Bereinigen
+        }
+        container._virtualCleanup = undefined;
+    }
+    // Trackliste erzeugen (virtualisiert)
     container.textContent = ""; // vorherigen Inhalt entfernen
-    const frag = document.createDocumentFragment();
-    for (const track of playlist.tracks) {
+    const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
+    if (tracks.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "playlist-empty";
+        empty.textContent = "Keine Songs gefunden.";
+        container.appendChild(empty);
+        return;
+    }
+    container.classList.add("virtualized-playlist");
+    const createTrackElement = (track) => {
         const trackDiv = document.createElement("div");
         trackDiv.className = "track";
         const img = document.createElement("img");
@@ -102,10 +121,9 @@ function renderPlaylist(playlist) {
         infoDiv.appendChild(songDiv);
         trackDiv.appendChild(img);
         trackDiv.appendChild(infoDiv);
-        // Discogs-Link als kleiner Kasten mit Lupe
         const actions = document.createElement("div");
         actions.className = "actions";
-        actions.style.marginLeft = "auto"; // schiebt die Aktion nach rechts
+        actions.style.marginLeft = "auto";
         const makeBtn = (active) => {
             const a = document.createElement("a");
             a.textContent = "🔍";
@@ -169,7 +187,6 @@ function renderPlaylist(playlist) {
                     const data = await res.json();
                     const url = data?.url;
                     if (url) {
-                        // Update Link und visuell aktiv schalten, dann öffnen
                         a.href = url;
                         a.target = "_blank";
                         a.rel = "noopener noreferrer";
@@ -185,7 +202,6 @@ function renderPlaylist(playlist) {
             });
             actions.appendChild(a);
         }
-        // Vendor-Buttons (HHV, JPC, Amazon) strikt: nur anzeigen, wenn wir bereits eine Discogs-Übereinstimmung haben
         if (track.discogsAlbumUrl) {
             const quoted = (s) => `"${s}"`;
             const terms = [];
@@ -196,7 +212,6 @@ function renderPlaylist(playlist) {
                 terms.push(quoted(track.album));
             if (track.releaseYear)
                 terms.push(String(track.releaseYear));
-            // streng auf Vinyl einschränken, in zukunft noch mehr elemente vielleicht
             const strictTokens = [
                 "(lp OR vinyl OR schallplatte)"
             ];
@@ -217,9 +232,87 @@ function renderPlaylist(playlist) {
             }
         }
         trackDiv.appendChild(actions);
-        frag.appendChild(trackDiv);
-    }
-    container.appendChild(frag);
+        return trackDiv;
+    };
+    const viewport = document.createElement("div");
+    viewport.className = "playlist-viewport";
+    viewport.style.willChange = "transform";
+    const spacer = document.createElement("div");
+    spacer.className = "playlist-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    container.appendChild(spacer);
+    container.appendChild(viewport);
+    const measureRowHeight = () => {
+        if (!tracks.length)
+            return 0;
+        const probe = createTrackElement(tracks[0]);
+        probe.style.visibility = "hidden";
+        probe.style.position = "absolute";
+        probe.style.pointerEvents = "none";
+        viewport.appendChild(probe);
+        const height = probe.getBoundingClientRect().height;
+        viewport.removeChild(probe);
+        return height || 0;
+    };
+    let rowHeight = measureRowHeight() || 100;
+    let totalHeight = rowHeight * tracks.length;
+    spacer.style.height = `${totalHeight}px`;
+    const VISIBLE_COUNT = 30;
+    const OVERSCAN = 6;
+    let currentStart = -1;
+    let currentEnd = -1;
+    const renderSlice = (start, end) => {
+        viewport.textContent = "";
+        const frag = document.createDocumentFragment();
+        for (let i = start; i < end; i++) {
+            const node = createTrackElement(tracks[i]);
+            frag.appendChild(node);
+        }
+        viewport.appendChild(frag);
+    };
+    const update = () => {
+        const rect = container.getBoundingClientRect();
+        const containerOffsetTop = window.scrollY + rect.top;
+        const scrollTop = Math.max(0, window.scrollY - containerOffsetTop);
+        const viewHeight = window.innerHeight;
+        totalHeight = rowHeight * tracks.length;
+        const visibleItems = Math.max(VISIBLE_COUNT, Math.ceil(viewHeight / rowHeight) + OVERSCAN * 2);
+        const maxStart = Math.max(0, tracks.length - visibleItems);
+        const baseStart = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN);
+        const nextStart = Math.min(baseStart, maxStart);
+        const baseEnd = Math.max(nextStart + visibleItems, Math.ceil((scrollTop + viewHeight) / rowHeight) + OVERSCAN);
+        const nextEnd = Math.min(tracks.length, baseEnd);
+        if (nextStart === currentStart && nextEnd === currentEnd)
+            return;
+        currentStart = nextStart;
+        currentEnd = nextEnd;
+        viewport.style.transform = `translateY(${nextStart * rowHeight}px)`;
+        renderSlice(nextStart, nextEnd);
+    };
+    let scheduled = false;
+    const schedule = () => {
+        if (scheduled)
+            return;
+        scheduled = true;
+        requestAnimationFrame(() => {
+            scheduled = false;
+            update();
+        });
+    };
+    const onScroll = () => schedule();
+    const onResize = () => {
+        rowHeight = measureRowHeight() || rowHeight;
+        totalHeight = rowHeight * tracks.length;
+        spacer.style.height = `${totalHeight}px`;
+        schedule();
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
+    container._virtualCleanup = () => {
+        window.removeEventListener("scroll", onScroll);
+        window.removeEventListener("resize", onResize);
+    };
+    update();
 }
 async function loadPlaylist(id) {
     const header = document.getElementById("playlist-header");

@@ -17,20 +17,24 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ReceivingData {
 
     private final SpotifyApi spotifyApi;
     private final String playlistId;
+    private final DiscogsService discogsService;
 
-    public ReceivingData(String accessToken, String playlistId) {
+    public ReceivingData(String accessToken, String playlistId, DiscogsService discogsService) {
         this.playlistId = playlistId;
         this.spotifyApi = new SpotifyApi.Builder()
                 .setAccessToken(accessToken)
                 .build();
+        this.discogsService = discogsService;
     }
 
     public PlaylistData loadPlaylistData() {
@@ -45,13 +49,6 @@ public class ReceivingData {
             if (playlist.getExternalUrls() != null && playlist.getExternalUrls().getExternalUrls() != null) {
                 playlistUrl = playlist.getExternalUrls().getExternalUrls().get("spotify");
             }
-
-            // Discogs-Service vorbereiten (optional, wenn Token fehlt, wird er ignoriert)
-            String discogsToken = Config.getDiscogsToken();
-            String discogsUA = Config.getDiscogsUserAgent();
-            DiscogsService discogs = (discogsToken != null && !discogsToken.isBlank())
-                    ? new DiscogsService(discogsToken, (discogsUA == null || discogsUA.isBlank()) ? "VinylMatch/1.0" : discogsUA)
-                    : null;
 
             // Cache für Album -> Barcode (UPC/EAN)
             Map<String, String> albumBarcodeCache = new HashMap<>();
@@ -74,6 +71,48 @@ public class ReceivingData {
                     break;
                 }
 
+                Set<String> albumIds = new HashSet<>();
+                for(PlaylistTrack playlistTrack: items){
+                    Object item = playlistTrack.getTrack();
+                    if (item instanceof Track track) {
+                        if (track.getAlbum() != null && track.getAlbum().getId() != null) {
+                            albumIds.add(track.getAlbum().getId());
+                        }
+                    }
+                }
+
+                Map<String, Album> albumDetailsMap = new HashMap<>();
+                if (!albumIds.isEmpty()){
+                    List<String> albumIdList = new ArrayList<>(albumIds);
+                    List<Album> allAlbums = new ArrayList<>();
+
+                    int batchSize = 20; // Spotify-Limit für getSeveralAlbums
+                    for (int i = 0; i < albumIds.size(); i += batchSize) {
+                        int end = Math.min(i + batchSize, albumIds.size());
+                        List<String> batch = albumIdList.subList(i, end);
+
+                        try {
+                            Album[] batchAlbums = spotifyApi
+                                    .getSeveralAlbums(batch.toArray(new String[0]))
+                                    .build()
+                                    .execute();
+
+                            allAlbums.addAll(Arrays.asList(batchAlbums));
+                        } catch (Exception e) {
+                            System.err.println("[Spotify] Fehler beim Laden der Alben (Batch " + (i / batchSize + 1) + "): " + e.getMessage());
+                            e.printStackTrace();
+                        }
+                    }
+                    Album[] albums = allAlbums.toArray(new Album[0]);
+                    if (albums != null){
+                        for (Album album : albums){
+                            if(album != null && album.getId() != null) {
+                                albumDetailsMap.put(album.getId(), album);
+                            }
+                        }
+                    }
+                }
+
                 for (PlaylistTrack playlistTrack : items) {
                     Object item = playlistTrack.getTrack();
                     if (item instanceof Track track) {
@@ -84,57 +123,64 @@ public class ReceivingData {
                                 .collect(Collectors.joining(", "))
                                 : "Unknown";
 
-                        String albumName = (track.getAlbum() != null)
-                                ? track.getAlbum().getName()
-                                : "Unknown";
+                        String albumId = (track.getAlbum() != null) ? track.getAlbum().getId() : null;
+                        Album albumDetails = (albumId != null) ? albumDetailsMap.get(albumId) : null;
+
+                        String albumName = (albumDetails != null) ? albumDetails.getName()
+                                : (track.getAlbum() != null ? track.getAlbum().getName() : "Unknown");
                         Integer releaseYear = null;
-                        if (track.getAlbum() != null && track.getAlbum().getReleaseDate() != null) {
-                            String rd = track.getAlbum().getReleaseDate();
-                            if (rd.length() >= 4) {
-                                try {
-                                    releaseYear = Integer.parseInt(rd.substring(0, 4));
-                                } catch (NumberFormatException ignored) {}
+                        String releaseDate = null;
+                        if (albumDetails != null && albumDetails.getReleaseDate() != null) {
+                            releaseDate = albumDetails.getReleaseDate();
+                        } else if (track.getAlbum() != null) {
+                            releaseDate = track.getAlbum().getReleaseDate();
+                        }
+                        if (releaseDate != null && releaseDate.length() >= 4) {
+                            try {
+                                releaseYear = Integer.parseInt(releaseDate.substring(0, 4));
+                            } catch (NumberFormatException ignore) {
+                                // Ignorieren, Jahr bleibt null
                             }
                         }
                         String albumUrl = null;
-                        if (track.getAlbum() != null && track.getAlbum().getExternalUrls() != null
+                        if (albumDetails != null && albumDetails.getExternalUrls() != null
+                                && albumDetails.getExternalUrls().getExternalUrls() != null){
+                            albumUrl = albumDetails.getExternalUrls().getExternalUrls().get("spotify");
+                        }else if(track.getAlbum() != null && track.getAlbum().getExternalUrls() != null
                                 && track.getAlbum().getExternalUrls().getExternalUrls() != null) {
                             albumUrl = track.getAlbum().getExternalUrls().getExternalUrls().get("spotify");
                         }
 
-                        String coverUrl = (track.getAlbum() != null
-                                && track.getAlbum().getImages() != null
-                                && track.getAlbum().getImages().length > 0)
-                                ? track.getAlbum().getImages()[0].getUrl()
-                                : null;
+                        String coverUrl = null;
+                        if (albumDetails != null && albumDetails.getImages() != null && albumDetails.getImages().length > 0) {
+                            coverUrl = albumDetails.getImages()[0].getUrl();
+                        } else if (track.getAlbum() != null && track.getAlbum().getImages() != null && track.getAlbum().getImages().length > 0) {
+                            coverUrl = track.getAlbum().getImages()[0].getUrl();
+                        }
 
                         String trackName = track.getName();
 
                         // UPC/EAN ermitteln (nur 1x pro Album)
                         String barcode = null;
-                        if (track.getAlbum() != null && track.getAlbum().getId() != null) {
-                            String albumId = track.getAlbum().getId();
+                        if (albumId != null) {
                             barcode = albumBarcodeCache.get(albumId);
                             if (!albumBarcodeCache.containsKey(albumId)) {
-                                try {
-                                    Album full = spotifyApi.getAlbum(albumId).build().execute();
-                                    if (full != null && full.getExternalIds() != null && full.getExternalIds().getExternalIds() != null) {
-                                        Map<String, String> ids = full.getExternalIds().getExternalIds();
-                                        String upc = ids.get("upc");
-                                        String ean = ids.get("ean");
-                                        barcode = (upc != null && !upc.isBlank()) ? upc : ((ean != null && !ean.isBlank()) ? ean : null);
-                                    }
-                                } catch (Exception ignore) {
-                                    // Ignorieren und ohne Barcode fortfahren
+                                if (albumDetails != null && albumDetails.getExternalIds() != null
+                                        && albumDetails.getExternalIds().getExternalIds() != null) {
+                                    Map<String, String> ids = albumDetails.getExternalIds().getExternalIds();
+                                    String upc = ids.get("upc");
+                                    String ean = ids.get("ean");
+                                    barcode = (upc != null && !upc.isBlank()) ? upc
+                                            : ((ean != null && !ean.isBlank()) ? ean : null);
                                 }
                                 albumBarcodeCache.put(albumId, barcode);
                             }
                         }
 
                         String discogsUrl = null;
-                        if (discogs != null) {
+                        if (discogsService != null) {
                             // Priorisiere Suche per Barcode, ansonsten heuristische Pipeline
-                            discogsUrl = discogs.findAlbumUri(artistName, albumName, releaseYear, null, barcode).orElse(null);
+                            discogsUrl = discogsService.findAlbumUri(artistName, albumName, releaseYear, null, barcode).orElse(null);
                         }
 
                         tracks.add(new TrackData(trackName, artistName, albumName, releaseYear, albumUrl, discogsUrl, barcode, coverUrl));

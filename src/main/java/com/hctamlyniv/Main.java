@@ -1,6 +1,7 @@
 package com.hctamlyniv;
 
-import Server.ApiServer; import Server.PlaylistData;
+import Server.ApiServer;
+import Server.PlaylistData;
 
 public class Main {
 

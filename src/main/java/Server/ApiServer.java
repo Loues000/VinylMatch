@@ -12,6 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.util.Objects;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import com.hctamlyniv.ReceivingData;
 
@@ -19,6 +23,10 @@ public class ApiServer {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Path FRONTEND_BASE = Paths.get("src/main/frontend");
+    private static final Duration PLAYLIST_CACHE_TTL = Duration.ofMinutes(5);
+    private static final ConcurrentHashMap<CacheKey, CacheEntry> PLAYLIST_CACHE = new ConcurrentHashMap<>();
+    private static volatile String lastAuthSignature = null;
+    private static final Map<String, com.hctamlyniv.DiscogsService> DISCOGS_SERVICES = new ConcurrentHashMap<>();
 
     public static void start() throws IOException {
         int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8888"));
@@ -26,6 +34,7 @@ public class ApiServer {
 
         // API-Route
         server.createContext("/api/playlist", exchange -> {
+            CacheKey cacheKey = null;
             try {
                 addCorsHeaders(exchange.getResponseHeaders());
                 if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -66,11 +75,21 @@ public class ApiServer {
                     return;
                 }
 
-                ReceivingData rd = new ReceivingData(token, id);
-                PlaylistData playlistData = rd.loadPlaylistData();
+                String userSignature = deriveUserSignature(token);
+                invalidateCacheForAuthChange(userSignature);
+                cacheKey = new CacheKey(id, userSignature);
+                com.hctamlyniv.DiscogsService discogsService = getDiscogsService();
+
+                PlaylistData playlistData = lookupCachedPlaylist(cacheKey);
                 if (playlistData == null) {
-                    sendError(exchange, 500, "Failed to load playlist data");
-                    return;
+                    ReceivingData rd = new ReceivingData(token, id, discogsService);
+                    playlistData = rd.loadPlaylistData();
+                    if (playlistData == null) {
+                        PLAYLIST_CACHE.remove(cacheKey);
+                        sendError(exchange, 500, "Failed to load playlist data");
+                        return;
+                    }
+                    storeInCache(cacheKey, playlistData);
                 }
                 String json = MAPPER.writeValueAsString(playlistData);
                 byte[] body = json.getBytes(StandardCharsets.UTF_8);
@@ -80,6 +99,9 @@ public class ApiServer {
                     os.write(body);
                 }
             } catch (Exception e) {
+                if (cacheKey != null) {
+                    PLAYLIST_CACHE.remove(cacheKey);
+                }
                 sendError(exchange, 500, "Error loading playlist: " + e.getMessage());
             }
         });
@@ -124,11 +146,7 @@ public class ApiServer {
                     return;
                 }
 
-                String token = com.hctamlyniv.Config.getDiscogsToken();
-                String ua = com.hctamlyniv.Config.getDiscogsUserAgent();
-                com.hctamlyniv.DiscogsService discogs = (token != null && !token.isBlank())
-                        ? new com.hctamlyniv.DiscogsService(token, (ua == null || ua.isBlank()) ? "VinylMatch/1.0" : ua)
-                        : null;
+                com.hctamlyniv.DiscogsService discogs = getDiscogsService();
                 if (discogs == null) {
                     sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
                     return;
@@ -215,6 +233,7 @@ public class ApiServer {
                     return;
                 }
                 com.hctamlyniv.SpotifyAuth.logout();
+                invalidateCacheForAuthChange(null);
                 exchange.sendResponseHeaders(204, -1);
             } catch (Exception e) {
                 sendError(exchange, 500, "Fehler beim Logout: " + e.getMessage());
@@ -275,6 +294,21 @@ public class ApiServer {
         System.out.println("Frontend läuft auf http://localhost:" + port + "/");
     }
 
+    private static com.hctamlyniv.DiscogsService getDiscogsService() {
+        String token = com.hctamlyniv.Config.getDiscogsToken();
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        String userAgent = com.hctamlyniv.Config.getDiscogsUserAgent();
+        if (userAgent == null || userAgent.isBlank()) {
+            userAgent = "VinylMatch/1.0";
+        }
+        final String tokenFinal = token;
+        final String userAgentFinal = userAgent;
+        final String key = tokenFinal + "|" + userAgentFinal;
+        return DISCOGS_SERVICES.computeIfAbsent(key, k -> new com.hctamlyniv.DiscogsService(tokenFinal, userAgentFinal));
+    }
+
     private static void addCorsHeaders(Headers h) {
         h.add("Access-Control-Allow-Origin", "*");
         h.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -301,5 +335,51 @@ public class ApiServer {
             os.write(body);
         }
     }
+    private static PlaylistData lookupCachedPlaylist(CacheKey key) {
+        CacheEntry entry = PLAYLIST_CACHE.get(key);
+        if (entry == null) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        if (entry.isExpired(now)) {
+            PLAYLIST_CACHE.remove(key, entry);
+            return null;
+        }
+        return entry.playlistData();
+    }
 
+    private static void storeInCache(CacheKey key, PlaylistData playlistData) {
+        long expiresAt = System.currentTimeMillis() + PLAYLIST_CACHE_TTL.toMillis();
+        PLAYLIST_CACHE.put(key, new CacheEntry(playlistData, expiresAt));
+    }
+
+    private static void invalidateCacheForAuthChange(String newSignature) {
+        String normalized = (newSignature == null) ? "" : newSignature;
+        String previous = lastAuthSignature;
+        if (!Objects.equals(previous, normalized)) {
+            PLAYLIST_CACHE.clear();
+            lastAuthSignature = normalized;
+        }
+    }
+
+    private static String deriveUserSignature(String fallbackToken) {
+        String refreshToken = com.hctamlyniv.SpotifyAuth.getRefreshToken();
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            return refreshToken;
+        }
+        String accessToken = com.hctamlyniv.SpotifyAuth.getAccessToken();
+        if (accessToken != null && !accessToken.isBlank()) {
+            return accessToken;
+        }
+        return (fallbackToken != null) ? fallbackToken : "";
+    }
+
+    private record CacheKey(String playlistId, String userSignature) {
+    }
+
+    private record CacheEntry(PlaylistData playlistData, long expiresAtMillis) {
+        boolean isExpired(long now) {
+            return now >= expiresAtMillis;
+        }
+    }
 }

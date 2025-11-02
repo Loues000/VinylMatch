@@ -49,3 +49,4 @@ src/main/frontend/bin/
 # Spotify-Zugangsdaten nicht pushen
 spotify.properties
 spotify.tokens
+/project_structure.txt

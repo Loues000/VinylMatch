@@ -55,7 +55,28 @@ body {
     color: #ccc;
     font-size: 24px;
 }
+#playlist.virtualized-playlist {
+    position: relative;
+}
 
+#playlist .playlist-spacer {
+    display: block;
+    width: 100%;
+    pointer-events: none;
+}
+
+#playlist .playlist-viewport {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+}
+
+#playlist .playlist-empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 40px 0;
+}
 /* Track */
 .track {
     display: flex;
