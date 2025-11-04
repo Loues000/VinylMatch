@@ -1,5 +1,8 @@
 package Server;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class TrackData {
 
     private final String trackName;
@@ -11,7 +14,15 @@ public class TrackData {
     private final String barcode;
     private final String coverUrl;
 
-    public TrackData(String trackName, String artist, String album, Integer releaseYear, String albumUrl, String discogsAlbumUrl, String barcode, String coverUrl) {
+    @JsonCreator
+    public TrackData(@JsonProperty("trackName") String trackName,
+                     @JsonProperty("artist") String artist,
+                     @JsonProperty("album") String album,
+                     @JsonProperty("releaseYear") Integer releaseYear,
+                     @JsonProperty("albumUrl") String albumUrl,
+                     @JsonProperty("discogsAlbumUrl") String discogsAlbumUrl,
+                     @JsonProperty("barcode") String barcode,
+                     @JsonProperty("coverUrl") String coverUrl) {
         this.trackName = (trackName != null && !trackName.isBlank()) ? trackName : "Unknown";
         this.artist = (artist != null && !artist.isBlank()) ? artist : "Unknown";
         this.album = (album != null && !album.isBlank()) ? album : "Unknown";

@@ -20,6 +20,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.concurrent.Executors;
 import com.hctamlyniv.ReceivingData;
 
@@ -33,13 +36,20 @@ public class ApiServer {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Path FRONTEND_BASE = Paths.get("src/main/frontend");
     private static final Duration PLAYLIST_CACHE_TTL = Duration.ofMinutes(5);
+    private static final Path PLAYLIST_CACHE_DIR = Paths.get("cache", "playlists");
     private static final ConcurrentHashMap<CacheKey, CacheEntry> PLAYLIST_CACHE = new ConcurrentHashMap<>();
     private static volatile String lastAuthSignature = null;
     private static final Map<String, com.hctamlyniv.DiscogsService> DISCOGS_SERVICES = new ConcurrentHashMap<>();
+    private static final HexFormat HEX_FORMAT = HexFormat.of();
 
     public static void start() throws IOException {
         int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8888"));
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+        try {
+            Files.createDirectories(PLAYLIST_CACHE_DIR);
+        } catch (IOException e) {
+            System.err.println("[CACHE] Konnte Cache-Verzeichnis nicht erstellen: " + e.getMessage());
+        }
 
         // API-Route
         server.createContext("/api/playlist", exchange -> {
@@ -115,6 +125,7 @@ public class ApiServer {
                     playlistData = rd.loadPlaylistData(offset, limit);
                     if (playlistData == null) {
                         PLAYLIST_CACHE.remove(cacheKey);
+                        deleteSnapshot(cacheKey);
                         sendError(exchange, 500, "Failed to load playlist data");
                         return;
                     }
@@ -130,6 +141,7 @@ public class ApiServer {
             } catch (Exception e) {
                 if (cacheKey != null) {
                     PLAYLIST_CACHE.remove(cacheKey);
+                    deleteSnapshot(cacheKey);
                 }
                 sendError(exchange, 500, "Error loading playlist: " + e.getMessage());
             }
@@ -480,20 +492,29 @@ public class ApiServer {
 
     private static PlaylistData lookupCachedPlaylist(CacheKey key) {
         CacheEntry entry = PLAYLIST_CACHE.get(key);
-        if (entry == null) {
-            return null;
-        }
         long now = System.currentTimeMillis();
-        if (entry.isExpired(now)) {
-            PLAYLIST_CACHE.remove(key, entry);
-            return null;
+        if (entry != null) {
+            if (entry.isExpired(now)) {
+                PLAYLIST_CACHE.remove(key, entry);
+                deleteSnapshot(key);
+                entry = null;
+            } else {
+                return entry.playlistData();
+            }
         }
-        return entry.playlistData();
+        CacheEntry snapshotEntry = readSnapshot(key);
+        if (snapshotEntry != null) {
+            PLAYLIST_CACHE.put(key, snapshotEntry);
+            return snapshotEntry.playlistData();
+        }
+        return null;
     }
 
     private static void storeInCache(CacheKey key, PlaylistData playlistData) {
         long expiresAt = System.currentTimeMillis() + PLAYLIST_CACHE_TTL.toMillis();
-        PLAYLIST_CACHE.put(key, new CacheEntry(playlistData, expiresAt));
+        CacheEntry entry = new CacheEntry(playlistData, expiresAt);
+        PLAYLIST_CACHE.put(key, entry);
+        writeSnapshot(key, entry);
     }
 
     private static void invalidateCacheForAuthChange(String newSignature) {
@@ -501,6 +522,7 @@ public class ApiServer {
         String previous = lastAuthSignature;
         if (!Objects.equals(previous, normalized)) {
             PLAYLIST_CACHE.clear();
+            purgeAllSnapshots();
             lastAuthSignature = normalized;
         }
     }
@@ -517,6 +539,83 @@ public class ApiServer {
         return (fallbackToken != null) ? fallbackToken : "";
     }
 
+    private static CacheEntry readSnapshot(CacheKey key) {
+        Path path = snapshotPath(key);
+        if (!Files.exists(path)) {
+            return null;
+        }
+        try {
+            byte[] bytes = Files.readAllBytes(path);
+            CacheSnapshot snapshot = MAPPER.readValue(bytes, CacheSnapshot.class);
+            long now = System.currentTimeMillis();
+            if (snapshot.expiresAtMillis() <= now) {
+                Files.deleteIfExists(path);
+                return null;
+            }
+            return new CacheEntry(snapshot.playlistData(), snapshot.expiresAtMillis());
+        } catch (IOException e) {
+            System.err.println("[CACHE] Konnte Snapshot nicht laden: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static void writeSnapshot(CacheKey key, CacheEntry entry) {
+        try {
+            Files.createDirectories(PLAYLIST_CACHE_DIR);
+            CacheSnapshot snapshot = new CacheSnapshot(entry.playlistData(), entry.expiresAtMillis());
+            byte[] bytes = MAPPER.writeValueAsBytes(snapshot);
+            Files.write(snapshotPath(key), bytes);
+        } catch (IOException e) {
+            System.err.println("[CACHE] Konnte Snapshot nicht speichern: " + e.getMessage());
+        }
+    }
+
+    private static void deleteSnapshot(CacheKey key) {
+        try {
+            Files.deleteIfExists(snapshotPath(key));
+        } catch (IOException e) {
+            System.err.println("[CACHE] Konnte Snapshot nicht löschen: " + e.getMessage());
+        }
+    }
+
+    private static void purgeAllSnapshots() {
+        try {
+            if (!Files.exists(PLAYLIST_CACHE_DIR)) {
+                return;
+            }
+            try (var stream = Files.list(PLAYLIST_CACHE_DIR)) {
+                stream.forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (IOException ignored) {
+                    }
+                });
+            }
+        } catch (IOException e) {
+            System.err.println("[CACHE] Konnte Cache-Verzeichnis nicht bereinigen: " + e.getMessage());
+        }
+    }
+
+    private static Path snapshotPath(CacheKey key) {
+        return PLAYLIST_CACHE_DIR.resolve(hashCacheKey(key) + ".json");
+    }
+
+    private static String hashCacheKey(CacheKey key) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.update((key.playlistId() == null ? "" : key.playlistId()).getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) '|');
+            digest.update((key.userSignature() == null ? "" : key.userSignature()).getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) '|');
+            digest.update(Integer.toString(key.offset()).getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) '|');
+            digest.update(Integer.toString(key.limit()).getBytes(StandardCharsets.UTF_8));
+            return HEX_FORMAT.formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
     private record CacheKey(String playlistId, String userSignature, int offset, int limit) {
     }
 
@@ -524,5 +623,8 @@ public class ApiServer {
         boolean isExpired(long now) {
             return now >= expiresAtMillis;
         }
+    }
+
+    private record CacheSnapshot(PlaylistData playlistData, long expiresAtMillis) {
     }
 }

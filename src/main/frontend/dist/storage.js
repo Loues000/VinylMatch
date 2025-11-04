@@ -1,6 +1,9 @@
 const LS_RECENTS = "vm:recentPlaylists";
-const LS_LAST_ID = "vm:lastPlaylistId";
-const LS_LAST_DATA = "vm:lastPlaylistData";
+const LS_CACHE_INDEX = "vm:playlistCacheIndex";
+const PLAYLIST_CACHE_MAX = 5;
+function cacheKeyFor(id) {
+    return `vm:playlistCache:${id}`;
+}
 function safeParse(json, fallback) {
     if (!json)
         return fallback;
@@ -24,6 +27,38 @@ export function writeRecents(list) {
         console.warn("Konnte Recents nicht speichern:", e);
     }
 }
+function readCacheIndex() {
+    const raw = localStorage.getItem(LS_CACHE_INDEX);
+    const list = safeParse(raw, []);
+    return Array.isArray(list) ? list.filter((entry) => entry && entry.id) : [];
+}
+function writeCacheIndex(list) {
+    try {
+        localStorage.setItem(LS_CACHE_INDEX, JSON.stringify(list));
+    }
+    catch (e) {
+        console.warn("Konnte Playlist-Index nicht speichern:", e);
+    }
+}
+function updateCacheIndex(id) {
+    if (!id)
+        return;
+    const now = Date.now();
+    let index = readCacheIndex().filter((entry) => entry.id !== id);
+    index.unshift({ id, updatedAt: now });
+    if (index.length > PLAYLIST_CACHE_MAX) {
+        const removed = index.splice(PLAYLIST_CACHE_MAX);
+        for (const entry of removed) {
+            try {
+                localStorage.removeItem(cacheKeyFor(entry.id));
+            }
+            catch (_a) {
+                /* ignore */
+            }
+        }
+    }
+    writeCacheIndex(index);
+}
 export function upsertRecentFromPlaylist(id, data) {
     if (!id || !data)
         return readRecents();
@@ -44,28 +79,43 @@ export function upsertRecentFromPlaylist(id, data) {
     writeRecents(recents);
     return recents;
 }
-export function readCachedPlaylist() {
-    const id = localStorage.getItem(LS_LAST_ID) || null;
-    const raw = localStorage.getItem(LS_LAST_DATA);
-    const data = safeParse(raw, null);
-    if (!id || !data)
+export function readCachedPlaylist(id) {
+    let targetId = id;
+    if (!targetId) {
+        const index = readCacheIndex();
+        targetId = index.length ? index[0].id : null;
+    }
+    if (!targetId)
         return null;
-    return { id, data };
+    const raw = localStorage.getItem(cacheKeyFor(targetId));
+    const data = safeParse(raw, null);
+    if (!data)
+        return null;
+    return { id: targetId, data };
 }
 export function writeCachedPlaylist(id, data) {
     if (!id || !data)
         return;
     try {
-        localStorage.setItem(LS_LAST_ID, id);
-        localStorage.setItem(LS_LAST_DATA, JSON.stringify(data));
+        localStorage.setItem(cacheKeyFor(id), JSON.stringify(data));
     }
     catch (e) {
         console.warn("Konnte Playlist nicht speichern:", e);
     }
+    updateCacheIndex(id);
 }
-export function clearCachedPlaylist() {
-    localStorage.removeItem(LS_LAST_ID);
-    localStorage.removeItem(LS_LAST_DATA);
+export function clearCachedPlaylist(id) {
+    if (id) {
+        localStorage.removeItem(cacheKeyFor(id));
+        const index = readCacheIndex().filter((entry) => entry.id !== id);
+        writeCacheIndex(index);
+        return;
+    }
+    const index = readCacheIndex();
+    for (const entry of index) {
+        localStorage.removeItem(cacheKeyFor(entry.id));
+    }
+    localStorage.removeItem(LS_CACHE_INDEX);
 }
 export function mergePlaylistChunk(id, chunk, existing) {
     const items = Array.isArray(chunk?.tracks) ? chunk.tracks : [];

@@ -19,10 +19,9 @@ html, body {
 }
 
 body {
-    padding: 88px 20px 40px;
+    padding: 88px 40px 40px;
     box-sizing: border-box;
-    display: flex;
-    justify-content: center;
+    display: block;
 }
 
 .hidden {
@@ -31,17 +30,18 @@ body {
 
 /* Hauptcontainer */
 .page-container {
-    width: 100%;
-    max-width: 1080px;
-    display: flex;
+    width: min(1200px, 100%);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
     gap: 32px;
     align-items: flex-start;
 }
 
 /* Sidebar */
 .sidebar {
-    width: 260px;
-    min-width: 240px;
+    width: 100%;
+    max-width: 300px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -176,6 +176,7 @@ main {
     flex-direction: column;
     gap: 28px;
     align-items: center;
+    margin: 0 auto;
 }
 
 .hero {
@@ -222,9 +223,9 @@ main {
 
 textarea#playlist-url {
     width: 100%;
-    min-height: 64px;
-    max-height: 180px;
-    resize: vertical;
+    min-height: 76px;
+    max-height: 120px;
+    resize: none;
     padding: 12px 14px;
     font-size: 15px;
     border-radius: 10px;
@@ -285,6 +286,107 @@ textarea#playlist-url:focus {
     text-decoration: underline;
 }
 
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.user-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.user-controls.hidden {
+    display: none;
+}
+
+.user-search,
+.user-sort {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.user-search input {
+    width: 160px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #d3dae2;
+    background: #fbfcfe;
+    font-size: 13px;
+}
+
+.user-search input:focus {
+    border-color: #9aa6b2;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(79, 91, 98, 0.18);
+}
+
+.user-sort select {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #d3dae2;
+    background: #fbfcfe;
+    font-size: 13px;
+    color: var(--accent);
+}
+
+.user-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.user-pagination.hidden {
+    display: none;
+}
+
+.pager-btn {
+    appearance: none;
+    border: none;
+    border-radius: 999px;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--accent);
+    background: #eef2f7;
+    cursor: pointer;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pager-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pager-btn:not(:disabled):hover {
+    background: #e1e7ef;
+    box-shadow: inset 0 0 0 1px rgba(31, 41, 55, 0.12);
+}
+
+.sidebar-status {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+}
+
 /* Loading Overlay */
 .loading-overlay {
     position: fixed;
@@ -324,18 +426,16 @@ textarea#playlist-url:focus {
 /* Responsive */
 @media (max-width: 1024px) {
     body {
-        padding: 84px 16px 32px;
+        padding: 84px 20px 32px;
     }
 
     .page-container {
-        flex-direction: column;
-        align-items: stretch;
+        grid-template-columns: 1fr;
     }
 
     .sidebar {
         position: static;
-        width: 100%;
-        min-width: 0;
+        max-width: none;
         top: auto;
     }
 
@@ -355,6 +455,16 @@ textarea#playlist-url:focus {
 @media (max-width: 640px) {
     body {
         padding: 76px 12px 24px;
+    }
+
+    .user-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .user-search input,
+    .user-sort select {
+        width: 100%;
     }
 
     .paste-panel {
