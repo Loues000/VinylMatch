@@ -77,6 +77,10 @@
     box-shadow: 0 4px 12px rgba(96, 165, 250, 0.45);
 }
 
+.navigation a.active {
+    color: #1DB954;
+}
+
 .spotify-btn {
     display: inline-flex;
     align-items: center;
