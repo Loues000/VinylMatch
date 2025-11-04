@@ -9,6 +9,8 @@ window.addEventListener("DOMContentLoaded", () => {
             const raw = localStorage.getItem("vm:recentPlaylists");
             const recents = raw ? JSON.parse(raw) : [];
             const list = document.getElementById("recent-list");
+            const sidebar = document.querySelector(".sidebar");
+            const container = document.querySelector(".page-container");
             if (list && Array.isArray(recents) && recents.length > 0) {
                 list.textContent = "";
                 for (const item of recents) {
@@ -25,10 +27,25 @@ window.addEventListener("DOMContentLoaded", () => {
                     a.appendChild(title);
                     list.appendChild(a);
                 }
+                if (sidebar)
+                    sidebar.style.display = "flex";
+                if (container)
+                    container.classList.remove("single-column");
+            }
+            else if (sidebar) {
+                sidebar.style.display = "none";
+                if (container)
+                    container.classList.add("single-column");
             }
         }
         catch (e) {
             console.warn("Failed to render recent playlists:", e);
+            const sidebar = document.querySelector(".sidebar");
+            const container = document.querySelector(".page-container");
+            if (sidebar)
+                sidebar.style.display = "none";
+            if (container)
+                container.classList.add("single-column");
         }
         const btn = document.getElementById("use-link");
         const ta = document.getElementById("playlist-url");
