@@ -5,13 +5,13 @@
     width: 100%;
     height: 60px;
     padding: 0 24px;
-    background-color: #333;
+    background-color: #1b1f29;
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: space-between;
     z-index: 9999;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    box-shadow: 0 10px 30px rgba(5, 12, 32, 0.35);
     box-sizing: border-box;
 }
 
@@ -24,6 +24,7 @@
 .logo {
     font-size: 24px;
     font-weight: bold;
+    letter-spacing: 0.08em;
 }
 
 .navigation {
@@ -32,25 +33,48 @@
     padding: 0;
     display: flex;
     align-items: center;
+    gap: 0;
 }
 
 .navigation li {
-    margin-right: 32px;
+    margin-right: 28px;
 }
 
 .navigation-right li {
-    margin-left: 16px;
+    margin-left: 18px;
     margin-right: 0;
 }
 
 .navigation a {
-    color: #fff;
-    font-weight: bold;
+    position: relative;
+    color: rgba(255, 255, 255, 0.82);
+    font-weight: 600;
     text-decoration: none;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 13px;
+    transition: color 0.2s ease;
+    padding-bottom: 6px;
 }
 
 .navigation a:hover {
-    color: #ccc;
+    color: #fff;
+}
+
+.navigation a.active {
+    color: #fff;
+}
+
+.navigation a.active::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -6px;
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #60a5fa, #c084fc);
+    box-shadow: 0 4px 12px rgba(96, 165, 250, 0.45);
 }
 
 .navigation a.active {
@@ -67,7 +91,8 @@
     font-size: 14px;
     color: white;
     background-color: #1DB954;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 10px 18px rgba(29, 185, 84, 0.28);
 }
 
 .spotify-btn img {
@@ -76,14 +101,17 @@
 }
 
 .spotify-btn:hover {
-    background-color: #17A74A;
+    background-color: #1aa34a;
+    box-shadow: 0 12px 22px rgba(29, 185, 84, 0.32);
 }
 
 /* Eingeloggt Zustand */
 .spotify-btn.logged-in {
-    background-color: #A5A5A5;
+    background-color: #4b5563;
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.25);
 }
 
 .spotify-btn.logged-in:hover {
-    background-color: #FF0000;
+    background-color: #ef4444;
+    box-shadow: 0 12px 24px rgba(248, 113, 113, 0.35);
 }
