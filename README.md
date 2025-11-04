@@ -59,26 +59,26 @@ You can run VinylMatch as a local web app and API server.
 ### Steps
 
 1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Loues000/VinylMatch.git
-   cd VinylMatch
-
+```
+git clone https://github.com/Loues000/VinylMatch.git
+cd VinylMatch
+```
 Set environment variables
 In your shell or system environment:
-
+```
 export SPOTIFY_CLIENT_ID=your_client_id
 export SPOTIFY_CLIENT_SECRET=your_client_secret
 export DISCOGS_TOKEN=your_discogs_token
 export DISCOGS_USER_AGENT="fitting project name (+your_contact_info)"
-
+```
 Build the project VinylMatch uses Maven:
-
+```
 mvn package
 
 Run the server
 
 java -jar target/VinylMatch.jar
-
+```
 The app will start a local web server, by default at:
 
 http://localhost:8888/
