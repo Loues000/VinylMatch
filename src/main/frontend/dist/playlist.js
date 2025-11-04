@@ -26,11 +26,8 @@ function updateSubtitle(aggregated) {
     const subtitle = document.querySelector("#playlist-header .playlist-subtitle");
     if (!subtitle)
         return;
-    const loaded = aggregated?.tracks?.length ?? 0;
     const total = aggregated?.totalTracks ?? loaded;
-    subtitle.textContent = total && loaded < total
-        ? `${loaded} von ${total} Songs geladen`
-        : `${total} Songs`;
+    subtitle.textContent = `${total} Songs`
 }
 function renderHeader(aggregated) {
     const header = document.getElementById("playlist-header");
