@@ -1,9 +1,29 @@
 import { readCachedPlaylist, storePlaylistChunk } from "./storage.js";
 const PLACEHOLDER_IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+const VIEW_MODE_KEY = "vm:playlistViewMode";
+const DEFAULT_VIEW_MODE = "list";
+function getStoredViewMode() {
+    try {
+        const stored = localStorage.getItem(VIEW_MODE_KEY);
+        return stored === "grid" ? "grid" : DEFAULT_VIEW_MODE;
+    }
+    catch (_a) {
+        return DEFAULT_VIEW_MODE;
+    }
+}
+function storeViewMode(mode) {
+    try {
+        localStorage.setItem(VIEW_MODE_KEY, mode);
+    }
+    catch (_a) {
+        /* ignore */
+    }
+}
 let state = {
     id: null,
     pageSize: 50,
     aggregated: null,
+    viewMode: getStoredViewMode(),
 };
 function showOverlay(message = "Playlist wird geladen …") {
     const overlay = document.getElementById("global-loading");
@@ -60,15 +80,71 @@ function renderHeader(aggregated) {
     header.appendChild(headerInfo);
     updateSubtitle(aggregated);
 }
+function determineMatchQuality(url) {
+    if (!url || typeof url !== "string") {
+        return { level: "poor", label: "Kein Treffer" };
+    }
+    const normalized = url.toLowerCase();
+    if (normalized.includes("/release/") || normalized.includes("/master/")) {
+        return { level: "good", label: "Direkter Treffer" };
+    }
+    if (normalized.includes("/search")) {
+        return { level: "medium", label: "Discogs-Suche" };
+    }
+    return { level: "medium", label: "Gefunden" };
+}
+function createQualityBadge(quality) {
+    const badge = document.createElement("span");
+    badge.className = `match-quality match-quality--${quality.level}`;
+    badge.textContent = quality.label;
+    return badge;
+}
+function buildVendorLinks(track) {
+    const quoted = (s) => `"${s}"`;
+    const terms = [];
+    const primaryArtist = (artist) => artist.split(/\s*(?:,|;|\/|&|\s+(?:feat\.?|featuring|ft\.?|x)\s+)\s*/i)[0]?.trim() || artist;
+    if (track.artist)
+        terms.push(quoted(primaryArtist(track.artist)));
+    if (track.album)
+        terms.push(quoted(track.album));
+    if (track.releaseYear)
+        terms.push(String(track.releaseYear));
+    const strictTokens = [
+        "(lp OR vinyl OR schallplatte)"
+    ];
+    const qBase = encodeURIComponent([...terms, ...strictTokens].join(" "));
+    const vendors = [
+        { label: "H", title: "HHV", href: `https://duckduckgo.com/?q=!ducky%20site:hhv.de%20${qBase}` },
+        { label: "J", title: "JPC", href: `https://duckduckgo.com/?q=!ducky%20site:jpc.de%20${qBase}` },
+        { label: "A", title: "Amazon", href: `https://duckduckgo.com/?q=!ducky%20site:amazon.de%20${qBase}` },
+    ];
+    return vendors.map((v) => {
+        const b = document.createElement("a");
+        b.textContent = v.label;
+        b.title = v.title;
+        b.setAttribute("aria-label", v.title);
+        b.href = v.href;
+        b.target = "_blank";
+        b.rel = "noopener noreferrer";
+        b.classList.add("vendor-link");
+        return b;
+    });
+}
+
 function createTrackElement(track) {
+    const quality = determineMatchQuality(track.discogsAlbumUrl);
     const trackDiv = document.createElement("div");
     trackDiv.className = "track";
+    trackDiv.dataset.matchQuality = quality.level;
     const img = document.createElement("img");
     img.className = "cover";
     img.src = track.coverUrl || PLACEHOLDER_IMG;
     img.alt = `Cover von ${track.album}`;
     const infoDiv = document.createElement("div");
     infoDiv.className = "info";
+    const titleDiv = document.createElement("div");
+    titleDiv.className = "track-title";
+    titleDiv.textContent = track.trackName || "Unbekannter Titel";
     const albumDiv = document.createElement("div");
     albumDiv.className = "album";
     if (track.albumUrl) {
@@ -82,37 +158,36 @@ function createTrackElement(track) {
     else {
         albumDiv.textContent = track.album;
     }
-    const songDiv = document.createElement("div");
-    songDiv.className = "song";
-    const titleSpan = document.createElement("span");
-    titleSpan.textContent = `${track.trackName} – `;
-    const artistEm = document.createElement("em");
-    artistEm.textContent = track.artist;
-    songDiv.appendChild(titleSpan);
-    songDiv.appendChild(artistEm);
+    const artistsDiv = document.createElement("div");
+    artistsDiv.className = "artists";
+    artistsDiv.textContent = track.artist;
+    const metaRow = document.createElement("div");
+    metaRow.className = "meta-row";
+    const qualityBadge = createQualityBadge(quality);
+    metaRow.appendChild(qualityBadge);
+    if (typeof track.releaseYear === "number") {
+        const year = document.createElement("span");
+        year.className = "release-year";
+        year.textContent = String(track.releaseYear);
+        metaRow.appendChild(year);
+    }
+    infoDiv.appendChild(titleDiv);
     infoDiv.appendChild(albumDiv);
-    infoDiv.appendChild(songDiv);
+    infoDiv.appendChild(artistsDiv);
+    infoDiv.appendChild(metaRow);
     const actions = document.createElement("div");
     actions.className = "actions";
-    const makeBtn = (active) => {
+    const createDiscogsButton = (active) => {
         const a = document.createElement("a");
         a.textContent = "🔍";
-        a.style.width = "32px";
-        a.style.height = "32px";
         a.setAttribute("aria-label", "Auf Discogs suchen");
         const setActive = (on) => {
             if (on) {
-                a.title = "Auf Discogs ansehen";
-                a.style.opacity = "1";
-                a.style.borderColor = "rgba(31,41,55,0.4)";
-                a.style.color = "#1f2937";
+                a.classList.remove("inactive");
                 a.setAttribute("aria-disabled", "false");
             }
             else {
-                a.title = "Discogs-Suche";
-                a.style.opacity = "0.6";
-                a.style.borderColor = "rgba(31,41,55,0.2)";
-                a.style.color = "#6b7280";
+                a.classList.add("inactive");
                 a.setAttribute("aria-disabled", "true");
             }
         };
@@ -120,18 +195,42 @@ function createTrackElement(track) {
         a._setActive = setActive;
         return a;
     };
+    const discogsBtn = createDiscogsButton(Boolean(track.discogsAlbumUrl));
+    actions.appendChild(discogsBtn);
+    const applyMatchQuality = (url) => {
+        if (!url)
+            return;
+        const updatedQuality = determineMatchQuality(url);
+        track.discogsAlbumUrl = url;
+        trackDiv.dataset.matchQuality = updatedQuality.level;
+        qualityBadge.textContent = updatedQuality.label;
+        qualityBadge.className = `match-quality match-quality--${updatedQuality.level}`;
+        if (discogsBtn._setActive)
+            discogsBtn._setActive(true);
+        discogsBtn.href = url;
+        discogsBtn.target = "_blank";
+        discogsBtn.rel = "noopener noreferrer";
+        discogsBtn.title = updatedQuality.level === "good" ? "Auf Discogs ansehen" : "Discogs-Suchergebnis";
+        actions.querySelectorAll(".vendor-link").forEach((el) => el.remove());
+        if (updatedQuality.level === "good") {
+            for (const link of buildVendorLinks(track)) {
+                actions.appendChild(link);
+            }
+        }
+    };
     if (track.discogsAlbumUrl) {
-        const a = makeBtn(true);
-        a.href = track.discogsAlbumUrl;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        actions.appendChild(a);
+        applyMatchQuality(track.discogsAlbumUrl);
     }
     else {
-        const a = makeBtn(false);
-        a.href = "#";
-        a.addEventListener("click", async (ev) => {
+        discogsBtn.href = "#";
+        let searching = false;
+        discogsBtn.addEventListener("click", async (ev) => {
             ev.preventDefault();
+            if (searching)
+                return;
+            searching = true;
+            discogsBtn.classList.add("inactive");
+            discogsBtn.setAttribute("aria-disabled", "true");
             try {
                 const res = await fetch("/api/discogs/search", {
                     method: "POST",
@@ -148,58 +247,66 @@ function createTrackElement(track) {
                 const data = await res.json();
                 const url = data?.url;
                 if (url) {
-                    a.href = url;
-                    a.target = "_blank";
-                    a.rel = "noopener noreferrer";
-                    if (a._setActive)
-                        a._setActive(true);
-                    a.click();
+                    applyMatchQuality(url);
+                    discogsBtn.click();
                 }
             }
             catch (e) {
                 console.warn("Discogs-Suche fehlgeschlagen:", e);
             }
+            finally {
+                searching = false;
+                if (discogsBtn.href === "#" || discogsBtn.href.endsWith("#")) {
+                    discogsBtn.classList.remove("inactive");
+                    discogsBtn.setAttribute("aria-disabled", "false");
+                }
+            }
         });
-        actions.appendChild(a);
-    }
-    if (track.discogsAlbumUrl) {
-        const quoted = (s) => `"${s}"`;
-        const terms = [];
-        const primaryArtist = (artist) => artist.split(/\s*(?:,|;|\/|&|\s+(?:feat\.?|featuring|ft\.?|x)\s+)\s*/i)[0]?.trim() || artist;
-        if (track.artist)
-            terms.push(quoted(primaryArtist(track.artist)));
-        if (track.album)
-            terms.push(quoted(track.album));
-        if (track.releaseYear)
-            terms.push(String(track.releaseYear));
-        const strictTokens = [
-            "(lp OR vinyl OR schallplatte)"
-        ];
-        const qBase = encodeURIComponent([...terms, ...strictTokens].join(" "));
-        const vendors = [
-            { label: "H", title: "HHV", href: `https://duckduckgo.com/?q=!ducky%20site:hhv.de%20${qBase}` },
-            { label: "J", title: "JPC", href: `https://duckduckgo.com/?q=!ducky%20site:jpc.de%20${qBase}` },
-            { label: "A", title: "Amazon", href: `https://duckduckgo.com/?q=!ducky%20site:amazon.de%20${qBase}` },
-        ];
-        for (const v of vendors) {
-            const b = makeBtn(true);
-            b.textContent = v.label;
-            b.title = v.title;
-            b.href = v.href;
-            b.target = "_blank";
-            b.rel = "noopener noreferrer";
-            actions.appendChild(b);
-        }
     }
     trackDiv.appendChild(img);
     trackDiv.appendChild(infoDiv);
     trackDiv.appendChild(actions);
     return trackDiv;
 }
+
+function applyViewMode(mode, options = {}) {
+    const normalized = mode === "grid" ? "grid" : DEFAULT_VIEW_MODE;
+    state.viewMode = normalized;
+    storeViewMode(normalized);
+    const container = document.getElementById("playlist");
+    if (container) {
+        container.dataset.viewMode = normalized;
+    }
+    const buttons = document.querySelectorAll("#view-toggle .view-toggle-btn");
+    buttons.forEach((btn) => {
+        const btnMode = btn.dataset.mode === "grid" ? "grid" : "list";
+        btn.classList.toggle("active", btnMode === normalized);
+    });
+    if (options?.rerender && state.aggregated) {
+        renderTracks(state.aggregated, { reset: true });
+    }
+}
+function initViewToggle() {
+    const toggle = document.getElementById("view-toggle");
+    if (!toggle || toggle.dataset.bound === "true")
+        return;
+    toggle.dataset.bound = "true";
+    toggle.addEventListener("click", (event) => {
+        const target = event.target instanceof HTMLElement
+            ? event.target.closest(".view-toggle-btn")
+            : null;
+        if (!target)
+            return;
+        const mode = target.dataset.mode === "grid" ? "grid" : "list";
+        applyViewMode(mode, { rerender: true });
+    });
+    applyViewMode(state.viewMode, { rerender: false });
+}
 function renderTracks(aggregated, options = {}) {
     const container = document.getElementById("playlist");
     if (!container)
         return;
+    container.dataset.viewMode = state.viewMode || DEFAULT_VIEW_MODE;
     const startIndex = options.startIndex ?? 0;
     if (options.reset) {
         container.textContent = "";
@@ -260,8 +367,15 @@ async function loadPlaylist(id, pageSize = 50) {
         console.error("Fehlende DOM-Elemente (#playlist-header oder #playlist).");
         return;
     }
-    state = { id: id || null, pageSize, aggregated: null };
-    const cached = readCachedPlaylist();
+    initViewToggle();
+    applyViewMode(state.viewMode, { rerender: false });
+    state = {
+        id: id || null,
+        pageSize,
+        aggregated: null,
+        viewMode: state.viewMode || getStoredViewMode(),
+    };
+    const cached = readCachedPlaylist(id || undefined);
     if (!state.id && cached?.id) {
         state.id = cached.id;
     }

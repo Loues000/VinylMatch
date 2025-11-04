@@ -37,7 +37,28 @@
     </div>
 
     <div class="sidebar-panel hidden" id="user-panel" role="tabpanel" aria-labelledby="user-tab" aria-disabled="true">
+      <div id="user-controls" class="user-controls hidden">
+        <label class="user-search" for="user-playlist-search">
+          <span class="sr-only">Playlists durchsuchen</span>
+          <input type="search" id="user-playlist-search" placeholder="Playlists durchsuchen" autocomplete="off" />
+        </label>
+        <label class="user-sort" for="user-playlist-sort">
+          <span>Sortieren nach</span>
+          <select id="user-playlist-sort">
+            <option value="name-asc">Name (A–Z)</option>
+            <option value="name-desc">Name (Z–A)</option>
+            <option value="tracks-desc">Songs (absteigend)</option>
+            <option value="tracks-asc">Songs (aufsteigend)</option>
+          </select>
+        </label>
+      </div>
       <div id="user-playlist-list" class="recent-list"></div>
+      <div id="user-pagination" class="user-pagination hidden" aria-live="polite">
+        <button type="button" class="pager-btn" id="user-prev-page" aria-label="Vorherige Seite">‹</button>
+        <span id="user-page-info">Seite 1 von 1</span>
+        <button type="button" class="pager-btn" id="user-next-page" aria-label="Nächste Seite">›</button>
+      </div>
+      <p id="user-status" class="sidebar-status" aria-live="polite"></p>
       <p class="sidebar-empty" data-context="user">Melde dich mit Spotify an, um deine Playlists zu sehen.</p>
     </div>
   </aside>

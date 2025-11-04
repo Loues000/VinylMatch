@@ -1,5 +1,8 @@
 package Server;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -21,8 +24,15 @@ public class PlaylistData {
                 false);
     }
 
-    public PlaylistData(String playlistName, String playlistCoverUrl, String playlistUrl, List<TrackData> tracks,
-                        int totalTracks, int offset, int nextOffset, boolean hasMore) {
+    @JsonCreator
+    public PlaylistData(@JsonProperty("playlistName") String playlistName,
+                        @JsonProperty("playlistCoverUrl") String playlistCoverUrl,
+                        @JsonProperty("playlistUrl") String playlistUrl,
+                        @JsonProperty("tracks") List<TrackData> tracks,
+                        @JsonProperty("totalTracks") int totalTracks,
+                        @JsonProperty("offset") int offset,
+                        @JsonProperty("nextOffset") int nextOffset,
+                        @JsonProperty("hasMore") boolean hasMore) {
         this.playlistName = (playlistName != null && !playlistName.isBlank())
                 ? playlistName
                 : "Unbekannte Playlist";

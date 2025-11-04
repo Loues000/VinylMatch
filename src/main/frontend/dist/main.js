@@ -100,95 +100,209 @@ window.addEventListener("DOMContentLoaded", () => {
         const userPanel = document.getElementById("user-panel");
         const userList = document.getElementById("user-playlist-list");
         const userEmpty = document.querySelector('.sidebar-empty[data-context="user"]');
-        let userPlaylists = [];
-        let userPlaylistsLoaded = false;
-        let userPlaylistsLoading = false;
-        let userPlaylistsError = null;
+        const userControls = document.getElementById("user-controls");
+        const userSearchInput = document.getElementById("user-playlist-search");
+        const userSortSelect = document.getElementById("user-playlist-sort");
+        const userPagination = document.getElementById("user-pagination");
+        const userPrev = document.getElementById("user-prev-page");
+        const userNext = document.getElementById("user-next-page");
+        const userPageInfo = document.getElementById("user-page-info");
+        const userStatus = document.getElementById("user-status");
+        const USER_PAGE_SIZE = 9;
+        const collator = new Intl.Collator("de", { sensitivity: "base" });
+        const userState = {
+            items: new Map(),
+            total: 0,
+            loading: false,
+            error: null,
+            backgroundLoading: false,
+            backgroundFailed: false,
+            fullyLoaded: false,
+            page: 1,
+            pageSize: USER_PAGE_SIZE,
+            query: "",
+            sort: "name-asc",
+        };
         let isLoggedIn = false;
-        let userPlaylistsMeta = null;
+        const normalize = (value) => (value || "").toString().toLowerCase();
+        const mergeUserPlaylists = (items) => {
+            if (!Array.isArray(items))
+                return;
+            for (const item of items) {
+                if (!item?.id)
+                    continue;
+                userState.items.set(item.id, item);
+            }
+        };
+        const getFilteredItems = () => {
+            let entries = Array.from(userState.items.values());
+            const query = userState.query.trim().toLowerCase();
+            if (query) {
+                entries = entries.filter((item) => normalize(item.name).includes(query));
+            }
+            switch (userState.sort) {
+                case "name-desc":
+                    entries.sort((a, b) => collator.compare(normalize(b.name), normalize(a.name)));
+                    break;
+                case "tracks-desc":
+                    entries.sort((a, b) => (b.trackCount ?? 0) - (a.trackCount ?? 0) || collator.compare(normalize(a.name), normalize(b.name)));
+                    break;
+                case "tracks-asc":
+                    entries.sort((a, b) => (a.trackCount ?? 0) - (b.trackCount ?? 0) || collator.compare(normalize(a.name), normalize(b.name)));
+                    break;
+                default:
+                    entries.sort((a, b) => collator.compare(normalize(a.name), normalize(b.name)));
+                    break;
+            }
+            return entries;
+        };
+        const updateControlsVisibility = (hasData) => {
+            if (userControls) {
+                userControls.classList.toggle("hidden", !hasData);
+            }
+        };
         const renderUserPlaylists = () => {
             if (!userPanel || !userList || !userEmpty)
                 return;
-            userList.textContent = "";
+            const hasData = userState.items.size > 0;
             if (!isLoggedIn) {
+                userPanel.setAttribute("aria-disabled", "true");
+                userPanel.classList.add("hidden");
                 userEmpty.textContent = "Melde dich mit Spotify an, um deine Playlists zu sehen.";
                 userEmpty.classList.remove("hidden");
-                userPanel.setAttribute("aria-disabled", "true");
+                updateControlsVisibility(false);
+                if (userStatus)
+                    userStatus.textContent = "";
                 return;
             }
             userPanel.setAttribute("aria-disabled", "false");
-            if (userPlaylistsLoading) {
-                userEmpty.textContent = "Playlists werden geladen …";
+            const filtered = getFilteredItems();
+            const totalPages = Math.max(1, Math.ceil(filtered.length / userState.pageSize));
+            if (userState.page > totalPages)
+                userState.page = totalPages;
+            const start = (userState.page - 1) * userState.pageSize;
+            const pageItems = filtered.slice(start, start + userState.pageSize);
+            userList.textContent = "";
+            let emptyMessage = "Keine Playlists gefunden.";
+            if (userState.error === "login") {
+                emptyMessage = "Bitte aktualisiere den Login mit Spotify.";
+            }
+            else if (userState.error) {
+                emptyMessage = "Deine Playlists konnten nicht geladen werden.";
+            }
+            else if (userState.loading && !hasData) {
+                emptyMessage = "Playlists werden geladen …";
+            }
+            else if (!hasData) {
+                emptyMessage = "Keine Playlists verfügbar.";
+            }
+            const showEmpty = !pageItems.length;
+            if (showEmpty) {
+                userEmpty.textContent = emptyMessage;
                 userEmpty.classList.remove("hidden");
-                return;
             }
-            if (userPlaylistsError) {
-                userEmpty.textContent = userPlaylistsError === "login"
-                    ? "Bitte aktualisiere den Login mit Spotify."
-                    : "Deine Playlists konnten nicht geladen werden.";
-                userEmpty.classList.remove("hidden");
-                return;
-            }
-            if (!userPlaylistsLoaded || userPlaylists.length === 0) {
-                userEmpty.textContent = "Keine Playlists gefunden.";
-                userEmpty.classList.remove("hidden");
-                return;
-            }
-            userEmpty.classList.add("hidden");
-            for (const playlist of userPlaylists) {
-                if (!playlist?.id)
-                    continue;
-                const card = createPlaylistCard(playlist);
-                card.addEventListener("click", (event) => {
-                    event.preventDefault();
-                    loadPlaylistAndNavigate(playlist.id, { title: playlist.name });
-                });
-                userList.appendChild(card);
-            }
-            if (userPlaylistsMeta?.hasMore) {
-                const hint = document.createElement("p");
-                hint.className = "sidebar-empty";
-                hint.style.marginTop = "8px";
-                hint.textContent = "Es werden nur die ersten 50 Playlists angezeigt.";
-                userList.appendChild(hint);
-            }
-        };
-        const fetchUserPlaylists = async () => {
-            if (!isLoggedIn || userPlaylistsLoading || userPlaylistsLoaded)
-                return;
-            userPlaylistsLoading = true;
-            userPlaylistsError = null;
-            renderUserPlaylists();
-            try {
-                const res = await fetch("/api/user/playlists?limit=50", { cache: "no-cache" });
-                if (res.status === 401) {
-                    userPlaylistsError = "login";
-                    return;
+            else {
+                userEmpty.classList.add("hidden");
+                for (const playlist of pageItems) {
+                    if (!playlist?.id)
+                        continue;
+                    const card = createPlaylistCard(playlist);
+                    card.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        loadPlaylistAndNavigate(playlist.id, { title: playlist.name });
+                    });
+                    userList.appendChild(card);
                 }
-                if (!res.ok) {
-                    throw new Error(`HTTP ${res.status}`);
+            }
+            updateControlsVisibility(hasData);
+            if (userPagination) {
+                userPagination.classList.toggle("hidden", filtered.length <= userState.pageSize);
+                if (userPrev)
+                    userPrev.disabled = userState.page <= 1;
+                if (userNext)
+                    userNext.disabled = userState.page >= totalPages;
+                if (userPageInfo)
+                    userPageInfo.textContent = `Seite ${Math.min(userState.page, totalPages)} von ${totalPages}`;
+            }
+            if (userStatus) {
+                if (userState.backgroundLoading) {
+                    userStatus.textContent = `Lade weitere Playlists … (${userState.items.size}/${userState.total || "?"})`;
                 }
-                const data = await res.json();
-                if (Array.isArray(data?.items)) {
-                    userPlaylists = data.items;
-                    userPlaylistsLoaded = true;
-                    userPlaylistsMeta = {
-                        hasMore: !!data.hasMore,
-                        total: typeof data.total === "number" ? data.total : data.items.length,
-                    };
+                else if (!userState.fullyLoaded && userState.items.size > 0 && userState.total > userState.items.size) {
+                    userStatus.textContent = `Geladen: ${userState.items.size} von ${userState.total}`;
+                }
+                else if (userState.backgroundFailed) {
+                    userStatus.textContent = "Weitere Playlists konnten nicht vollständig geladen werden.";
                 }
                 else {
-                    userPlaylists = [];
-                    userPlaylistsLoaded = true;
-                    userPlaylistsMeta = null;
+                    userStatus.textContent = "";
                 }
             }
-            catch (e) {
-                console.warn("Konnte Benutzer-Playlists nicht laden:", e);
-                userPlaylistsError = "error";
+        };
+        const fetchUserPlaylistsPage = async (offset = 0) => {
+            const params = new URLSearchParams({ offset: String(Math.max(0, offset)), limit: "50" });
+            const res = await fetch(`/api/user/playlists?${params.toString()}`, { cache: "no-cache" });
+            if (res.status === 401) {
+                throw Object.assign(new Error("Unauthorisiert"), { code: "login" });
+            }
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            return res.json();
+        };
+        const loadInitialUserPlaylists = async () => {
+            if (!isLoggedIn || userState.loading || userState.items.size > 0)
+                return;
+            userState.loading = true;
+            userState.error = null;
+            renderUserPlaylists();
+            try {
+                const data = await fetchUserPlaylistsPage(0);
+                mergeUserPlaylists(data?.items);
+                userState.total = typeof data?.total === "number" ? data.total : userState.items.size;
+                userState.fullyLoaded = userState.items.size >= userState.total;
+                userState.page = 1;
+                renderUserPlaylists();
+                if (!userState.fullyLoaded) {
+                    const nextOffset = (data?.offset ?? 0) + (data?.limit ?? data?.items?.length ?? 0);
+                    loadRemainingPlaylists(nextOffset);
+                }
+            }
+            catch (error) {
+                console.warn("Konnte Benutzer-Playlists nicht laden:", error);
+                userState.error = error?.code === "login" ? "login" : "error";
             }
             finally {
-                userPlaylistsLoading = false;
+                userState.loading = false;
+                renderUserPlaylists();
+            }
+        };
+        const loadRemainingPlaylists = async (startOffset = 0) => {
+            if (userState.fullyLoaded || userState.backgroundLoading)
+                return;
+            userState.backgroundLoading = true;
+            renderUserPlaylists();
+            let offset = Math.max(0, startOffset);
+            try {
+                while (userState.items.size < userState.total) {
+                    const data = await fetchUserPlaylistsPage(offset);
+                    if (!Array.isArray(data?.items) || !data.items.length)
+                        break;
+                    mergeUserPlaylists(data.items);
+                    offset = (data?.offset ?? offset) + (data?.limit ?? data.items.length);
+                    userState.total = typeof data?.total === "number" ? data.total : userState.total;
+                    renderUserPlaylists();
+                    if (offset >= userState.total)
+                        break;
+                }
+                userState.fullyLoaded = userState.items.size >= userState.total;
+            }
+            catch (error) {
+                console.warn("Weitere Playlists konnten nicht geladen werden:", error);
+                userState.backgroundFailed = true;
+            }
+            finally {
+                userState.backgroundLoading = false;
                 renderUserPlaylists();
             }
         };
@@ -198,25 +312,62 @@ window.addEventListener("DOMContentLoaded", () => {
                 userTab.disabled = !isLoggedIn;
                 userTab.setAttribute("aria-selected", "false");
             }
-            if (userPanel) {
-                userPanel.classList.add("hidden");
-                if (!isLoggedIn) {
-                    userPanel.setAttribute("aria-disabled", "true");
-                }
-            }
             if (!isLoggedIn) {
-                userPlaylists = [];
-                userPlaylistsLoaded = false;
-                userPlaylistsError = null;
-                userPlaylistsMeta = null;
+                userState.items.clear();
+                userState.total = 0;
+                userState.loading = false;
+                userState.error = null;
+                userState.backgroundLoading = false;
+                userState.backgroundFailed = false;
+                userState.fullyLoaded = false;
+                userState.page = 1;
+                userState.query = "";
+                if (userSearchInput)
+                    userSearchInput.value = "";
+                if (userSortSelect)
+                    userSortSelect.value = "name-asc";
                 if (recentTab)
                     toggleTab("recent-panel");
             }
             renderUserPlaylists();
             if (isLoggedIn) {
-                fetchUserPlaylists();
+                loadInitialUserPlaylists();
             }
         };
+        if (userSearchInput) {
+            userSearchInput.addEventListener("input", (event) => {
+                const value = event.target?.value ?? "";
+                userState.query = value;
+                userState.page = 1;
+                renderUserPlaylists();
+            });
+        }
+        if (userSortSelect) {
+            userSortSelect.addEventListener("change", (event) => {
+                const value = event.target?.value ?? "name-asc";
+                userState.sort = value;
+                userState.page = 1;
+                renderUserPlaylists();
+            });
+        }
+        if (userPrev) {
+            userPrev.addEventListener("click", () => {
+                if (userState.page > 1) {
+                    userState.page -= 1;
+                    renderUserPlaylists();
+                }
+            });
+        }
+        if (userNext) {
+            userNext.addEventListener("click", () => {
+                const filtered = getFilteredItems();
+                const totalPages = Math.max(1, Math.ceil(filtered.length / userState.pageSize));
+                if (userState.page < totalPages) {
+                    userState.page += 1;
+                    renderUserPlaylists();
+                }
+            });
+        }
         window.addEventListener("vm:auth-state", (event) => {
             handleAuthChange(!!event?.detail?.loggedIn);
         });
@@ -234,7 +385,8 @@ window.addEventListener("DOMContentLoaded", () => {
                     return;
                 }
                 toggleTab("user-panel");
-                fetchUserPlaylists();
+                renderUserPlaylists();
+                loadInitialUserPlaylists();
             });
         }
         toggleTab("recent-panel");
@@ -244,29 +396,41 @@ window.addEventListener("DOMContentLoaded", () => {
         const apiA = document.getElementById("api-link");
         const pageA = document.getElementById("playlist-page-link");
         let submitting = false;
+        const getPlaylistIdFromUrl = (value) => {
+            if (!value)
+                return null;
+            try {
+                const parsed = new URL(value);
+                if (!parsed.hostname.includes("spotify.com"))
+                    return null;
+                const segments = parsed.pathname.split("/").filter(Boolean);
+                if (segments[0] !== "playlist" || !segments[1])
+                    return null;
+                return segments[1].split("?")[0];
+            }
+            catch (_a) {
+                return null;
+            }
+        };
+        const refreshButtonState = () => {
+            if (!btn)
+                return;
+            const id = getPlaylistIdFromUrl(ta?.value.trim() ?? "");
+            btn.disabled = submitting || !id;
+        };
+        if (ta) {
+            ta.addEventListener("input", refreshButtonState);
+            refreshButtonState();
+        }
         if (btn && ta) {
             btn.addEventListener("click", async () => {
                 if (submitting)
                     return;
                 const url = ta.value.trim();
-                if (!url) {
-                    alert("Please paste a Spotify playlist link first.");
-                    return;
-                }
-                let id;
-                try {
-                    const parsed = new URL(url);
-                    if (!parsed.hostname.includes("spotify.com"))
-                        throw new Error("Not a Spotify URL");
-                    const parts = parsed.pathname.split("/");
-                    if (parts[1] !== "playlist" || parts.length < 3)
-                        throw new Error("Not a playlist URL");
-                    id = parts[2].split("?")[0];
-                    if (!id)
-                        throw new Error("Invalid ID");
-                }
-                catch (e) {
-                    alert("Invalid Spotify playlist URL: " + (e instanceof Error ? e.message : String(e)));
+                const id = getPlaylistIdFromUrl(url);
+                if (!id) {
+                    alert("Please paste a valid Spotify playlist link first.");
+                    refreshButtonState();
                     return;
                 }
                 const apiUrl = `/api/playlist?id=${encodeURIComponent(id)}&limit=${PLAYLIST_PAGE_SIZE}`;
@@ -282,7 +446,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 if (gen)
                     gen.classList.add("visible");
                 submitting = true;
-                btn.disabled = true;
+                refreshButtonState();
                 showGlobalLoading("Playlist wird geladen …");
                 let response;
                 try {
@@ -291,8 +455,8 @@ window.addEventListener("DOMContentLoaded", () => {
                         throw new Error(`HTTP ${response.status}`);
                     }
                     const payload = await response.json();
-                    const cached = readCachedPlaylist();
-                    storePlaylistChunk(id, payload, cached?.id === id ? cached.data : undefined);
+                    const cached = readCachedPlaylist(id);
+                    storePlaylistChunk(id, payload, cached?.data);
                     renderRecents();
                     location.href = pageUrl;
                 }
@@ -306,7 +470,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
                 finally {
                     submitting = false;
-                    btn.disabled = false;
+                    refreshButtonState();
                 }
             });
         }
@@ -334,8 +498,8 @@ async function loadPlaylistAndNavigate(id, options = {}) {
             throw new Error(`HTTP ${response.status}`);
         }
         const payload = await response.json();
-        const cached = readCachedPlaylist();
-        storePlaylistChunk(id, payload, cached?.id === id ? cached.data : undefined);
+        const cached = readCachedPlaylist(id);
+        storePlaylistChunk(id, payload, cached?.data);
         renderRecents();
         location.href = pageUrl;
     }
