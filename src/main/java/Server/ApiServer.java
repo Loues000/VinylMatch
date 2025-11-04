@@ -13,11 +13,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.net.URLDecoder;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Objects;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import com.hctamlyniv.ReceivingData;
+
+import se.michaelthelin.spotify.SpotifyApi;
+import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
+import se.michaelthelin.spotify.model_objects.specification.Paging;
+import se.michaelthelin.spotify.model_objects.specification.PlaylistSimplified;
 
 public class ApiServer {
 
@@ -46,22 +55,42 @@ public class ApiServer {
                     return;
                 }
 
-                String query = exchange.getRequestURI().getQuery();
-                String id = null;
-                if (query != null) {
-                    for (String param : query.split("&")) {
-                        if (param.startsWith("id=")) {
-                            id = param.substring(3);
-                            break;
-                        }
-                    }
-                }
+                Map<String, String> params = parseQueryParams(exchange.getRequestURI().getRawQuery());
+                String id = params.get("id");
                 if (id == null || id.isBlank()) {
                     sendError(exchange, 400, "Missing or invalid 'id' query parameter");
                     return;
                 }
 
-                System.out.println("[API] Requested: http://localhost:" + port + "/api/playlist?id=" + id);
+                int offset = 0;
+                String offsetParam = params.get("offset");
+                if (offsetParam != null && !offsetParam.isBlank()) {
+                    try {
+                        offset = Math.max(0, Integer.parseInt(offsetParam));
+                    } catch (NumberFormatException e) {
+                        sendError(exchange, 400, "Invalid 'offset' query parameter");
+                        return;
+                    }
+                }
+
+                int limit = -1;
+                String limitParam = params.get("limit");
+                if (limitParam != null && !limitParam.isBlank()) {
+                    try {
+                        int parsedLimit = Integer.parseInt(limitParam);
+                        if (parsedLimit > 0) {
+                            limit = Math.min(parsedLimit, 500);
+                        } else {
+                            limit = -1;
+                        }
+                    } catch (NumberFormatException e) {
+                        sendError(exchange, 400, "Invalid 'limit' query parameter");
+                        return;
+                    }
+                }
+
+                String limitLog = (limit > 0) ? String.valueOf(limit) : "all";
+                System.out.println("[API] Requested: http://localhost:" + port + "/api/playlist?id=" + id + "&offset=" + offset + "&limit=" + limitLog);
 
                 // Wähle Token dynamisch: für Playlist-Endpunkte ist ein Benutzer-Token erforderlich
                 String token = null;
@@ -77,13 +106,13 @@ public class ApiServer {
 
                 String userSignature = deriveUserSignature(token);
                 invalidateCacheForAuthChange(userSignature);
-                cacheKey = new CacheKey(id, userSignature);
+                cacheKey = new CacheKey(id, userSignature, offset, limit);
                 com.hctamlyniv.DiscogsService discogsService = getDiscogsService();
 
                 PlaylistData playlistData = lookupCachedPlaylist(cacheKey);
                 if (playlistData == null) {
                     ReceivingData rd = new ReceivingData(token, id, discogsService);
-                    playlistData = rd.loadPlaylistData();
+                    playlistData = rd.loadPlaylistData(offset, limit);
                     if (playlistData == null) {
                         PLAYLIST_CACHE.remove(cacheKey);
                         sendError(exchange, 500, "Failed to load playlist data");
@@ -103,6 +132,95 @@ public class ApiServer {
                     PLAYLIST_CACHE.remove(cacheKey);
                 }
                 sendError(exchange, 500, "Error loading playlist: " + e.getMessage());
+            }
+        });
+
+        server.createContext("/api/user/playlists", exchange -> {
+            try {
+                addCorsHeaders(exchange.getResponseHeaders());
+                String method = exchange.getRequestMethod();
+                if ("OPTIONS".equalsIgnoreCase(method)) {
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+                if (!"GET".equalsIgnoreCase(method)) {
+                    sendError(exchange, 405, "Nur GET erlaubt");
+                    return;
+                }
+                String token = null;
+                if (com.hctamlyniv.SpotifyAuth.isUserLoggedIn()) {
+                    try { com.hctamlyniv.SpotifyAuth.refreshAccessToken(); } catch (Exception ignored) {}
+                    token = com.hctamlyniv.SpotifyAuth.getAccessToken();
+                }
+                if (token == null || token.isBlank()) {
+                    sendError(exchange, 401, "Spotify-Login erforderlich. Bitte über den Login-Button anmelden.");
+                    return;
+                }
+                Map<String, String> params = parseQueryParams(exchange.getRequestURI().getRawQuery());
+                int offset = 0;
+                String offsetParam = params.get("offset");
+                if (offsetParam != null && !offsetParam.isBlank()) {
+                    try {
+                        offset = Math.max(0, Integer.parseInt(offsetParam));
+                    } catch (NumberFormatException e) {
+                        sendError(exchange, 400, "Invalid 'offset' query parameter");
+                        return;
+                    }
+                }
+                int limit = 50;
+                String limitParam = params.get("limit");
+                if (limitParam != null && !limitParam.isBlank()) {
+                    try {
+                        int parsedLimit = Integer.parseInt(limitParam);
+                        if (parsedLimit > 0) {
+                            limit = Math.min(parsedLimit, 50);
+                        }
+                    } catch (NumberFormatException e) {
+                        sendError(exchange, 400, "Invalid 'limit' query parameter");
+                        return;
+                    }
+                }
+
+                SpotifyApi spotifyApi = new SpotifyApi.Builder().setAccessToken(token).build();
+                Paging<PlaylistSimplified> page = spotifyApi.getListOfCurrentUsersPlaylists()
+                        .offset(offset)
+                        .limit(limit)
+                        .build()
+                        .execute();
+
+                PlaylistSimplified[] items = page.getItems();
+                List<PlaylistSummary> summaries = new ArrayList<>();
+                if (items != null) {
+                    for (PlaylistSimplified item : items) {
+                        if (item == null || item.getId() == null) {
+                            continue;
+                        }
+                        String coverUrl = null;
+                        if (item.getImages() != null && item.getImages().length > 0) {
+                            coverUrl = item.getImages()[0].getUrl();
+                        }
+                        Integer trackCount = null;
+                        if (item.getTracks() != null) {
+                            trackCount = item.getTracks().getTotal();
+                        }
+                        String owner = (item.getOwner() != null) ? item.getOwner().getDisplayName() : null;
+                        summaries.add(new PlaylistSummary(item.getId(), item.getName(), coverUrl, trackCount, owner));
+                    }
+                }
+
+                int total = page.getTotal();
+                UserPlaylistsResponse payload = new UserPlaylistsResponse(summaries, total, offset, limit);
+                String json = MAPPER.writeValueAsString(payload);
+                byte[] body = json.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, body.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(body);
+                }
+            } catch (SpotifyWebApiException e) {
+                sendError(exchange, 502, "Spotify API error: " + e.getMessage());
+            } catch (Exception e) {
+                sendError(exchange, 500, "Error loading user playlists: " + e.getMessage());
             }
         });
 
@@ -335,6 +453,31 @@ public class ApiServer {
             os.write(body);
         }
     }
+
+    private static Map<String, String> parseQueryParams(String rawQuery) {
+        Map<String, String> params = new HashMap<>();
+        if (rawQuery == null || rawQuery.isBlank()) {
+            return params;
+        }
+        for (String pair : rawQuery.split("&")) {
+            if (pair == null || pair.isEmpty()) {
+                continue;
+            }
+            int idx = pair.indexOf('=');
+            String key;
+            String value;
+            if (idx >= 0) {
+                key = URLDecoder.decode(pair.substring(0, idx), StandardCharsets.UTF_8);
+                value = URLDecoder.decode(pair.substring(idx + 1), StandardCharsets.UTF_8);
+            } else {
+                key = URLDecoder.decode(pair, StandardCharsets.UTF_8);
+                value = "";
+            }
+            params.put(key, value);
+        }
+        return params;
+    }
+
     private static PlaylistData lookupCachedPlaylist(CacheKey key) {
         CacheEntry entry = PLAYLIST_CACHE.get(key);
         if (entry == null) {
@@ -374,7 +517,7 @@ public class ApiServer {
         return (fallbackToken != null) ? fallbackToken : "";
     }
 
-    private record CacheKey(String playlistId, String userSignature) {
+    private record CacheKey(String playlistId, String userSignature, int offset, int limit) {
     }
 
     private record CacheEntry(PlaylistData playlistData, long expiresAtMillis) {
