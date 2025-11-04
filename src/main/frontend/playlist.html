@@ -14,11 +14,20 @@
 <body>
 <div id="header"></div>
 
-<!-- Playlist Header -->
-<div id="playlist-header"></div>
+<div id="global-loading" class="loading-overlay hidden" role="alert" aria-live="assertive">
+    <div class="spinner" aria-hidden="true"></div>
+    <p id="global-loading-text">Playlist wird geladen …</p>
+</div>
 
-<!-- Playlist Inhalte -->
-<div id="playlist">Loading...</div>
+<div class="playlist-page">
+    <div id="playlist-header"></div>
+
+    <div id="playlist" class="playlist-tracks" aria-live="polite">Loading...</div>
+
+    <div class="load-more-wrapper hidden" id="load-more-wrapper">
+        <button type="button" class="btn load-more" id="load-more">Weitere Titel laden</button>
+    </div>
+</div>
 
 <script type="module" src="/dist/main.js"></script>
 </body>

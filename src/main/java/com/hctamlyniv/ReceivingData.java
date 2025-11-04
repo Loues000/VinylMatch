@@ -5,13 +5,13 @@ import Server.TrackData;
 import org.apache.hc.core5.http.ParseException;
 import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
+import se.michaelthelin.spotify.model_objects.specification.Album;
 import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
 import se.michaelthelin.spotify.model_objects.specification.Episode;
 import se.michaelthelin.spotify.model_objects.specification.Paging;
 import se.michaelthelin.spotify.model_objects.specification.Playlist;
 import se.michaelthelin.spotify.model_objects.specification.PlaylistTrack;
 import se.michaelthelin.spotify.model_objects.specification.Track;
-import se.michaelthelin.spotify.model_objects.specification.Album;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -38,8 +38,11 @@ public class ReceivingData {
     }
 
     public PlaylistData loadPlaylistData() {
+        return loadPlaylistData(0, -1);
+    }
+
+    public PlaylistData loadPlaylistData(int requestedOffset, int requestedLimit) {
         try {
-            // Playlist-Metadaten (Name, Cover)
             Playlist playlist = spotifyApi.getPlaylist(playlistId).build().execute();
             String playlistName = playlist.getName();
             String playlistCoverUrl = (playlist.getImages() != null && playlist.getImages().length > 0)
@@ -50,29 +53,38 @@ public class ReceivingData {
                 playlistUrl = playlist.getExternalUrls().getExternalUrls().get("spotify");
             }
 
-            // Cache für Album -> Barcode (UPC/EAN)
-            Map<String, String> albumBarcodeCache = new HashMap<>();
+            int safeOffset = Math.max(0, requestedOffset);
+            boolean paginated = requestedLimit > 0;
+            int remaining = paginated ? requestedLimit : 0;
+            int currentOffset = safeOffset;
+            int total = 0;
 
-            // Tracks mit Pagination laden
+            Map<String, String> albumBarcodeCache = new HashMap<>();
             List<TrackData> tracks = new ArrayList<>();
-            final int limit = 100;
-            int offset = 0;
 
             while (true) {
+                if (paginated && remaining <= 0) {
+                    break;
+                }
+                int requestLimit = paginated ? Math.min(remaining, 100) : 100;
+                if (requestLimit <= 0) {
+                    break;
+                }
                 Paging<PlaylistTrack> page = spotifyApi
                         .getPlaylistsItems(playlistId)
-                        .limit(limit)
-                        .offset(offset)
+                        .limit(requestLimit)
+                        .offset(currentOffset)
                         .build()
                         .execute();
 
                 PlaylistTrack[] items = page.getItems();
+                total = page.getTotal();
                 if (items == null || items.length == 0) {
                     break;
                 }
 
                 Set<String> albumIds = new HashSet<>();
-                for(PlaylistTrack playlistTrack: items){
+                for (PlaylistTrack playlistTrack : items) {
                     Object item = playlistTrack.getTrack();
                     if (item instanceof Track track) {
                         if (track.getAlbum() != null && track.getAlbum().getId() != null) {
@@ -82,13 +94,13 @@ public class ReceivingData {
                 }
 
                 Map<String, Album> albumDetailsMap = new HashMap<>();
-                if (!albumIds.isEmpty()){
+                if (!albumIds.isEmpty()) {
                     List<String> albumIdList = new ArrayList<>(albumIds);
                     List<Album> allAlbums = new ArrayList<>();
 
                     int batchSize = 20; // Spotify-Limit für getSeveralAlbums
-                    for (int i = 0; i < albumIds.size(); i += batchSize) {
-                        int end = Math.min(i + batchSize, albumIds.size());
+                    for (int i = 0; i < albumIdList.size(); i += batchSize) {
+                        int end = Math.min(i + batchSize, albumIdList.size());
                         List<String> batch = albumIdList.subList(i, end);
 
                         try {
@@ -104,9 +116,9 @@ public class ReceivingData {
                         }
                     }
                     Album[] albums = allAlbums.toArray(new Album[0]);
-                    if (albums != null){
-                        for (Album album : albums){
-                            if(album != null && album.getId() != null) {
+                    if (albums != null) {
+                        for (Album album : albums) {
+                            if (album != null && album.getId() != null) {
                                 albumDetailsMap.put(album.getId(), album);
                             }
                         }
@@ -116,7 +128,6 @@ public class ReceivingData {
                 for (PlaylistTrack playlistTrack : items) {
                     Object item = playlistTrack.getTrack();
                     if (item instanceof Track track) {
-                        // Alle Künstlernamen verbinden (z. B. "Artist A, Artist B")
                         String artistName = (track.getArtists() != null && track.getArtists().length > 0)
                                 ? Arrays.stream(track.getArtists())
                                 .map(ArtistSimplified::getName)
@@ -144,9 +155,9 @@ public class ReceivingData {
                         }
                         String albumUrl = null;
                         if (albumDetails != null && albumDetails.getExternalUrls() != null
-                                && albumDetails.getExternalUrls().getExternalUrls() != null){
+                                && albumDetails.getExternalUrls().getExternalUrls() != null) {
                             albumUrl = albumDetails.getExternalUrls().getExternalUrls().get("spotify");
-                        }else if(track.getAlbum() != null && track.getAlbum().getExternalUrls() != null
+                        } else if (track.getAlbum() != null && track.getAlbum().getExternalUrls() != null
                                 && track.getAlbum().getExternalUrls().getExternalUrls() != null) {
                             albumUrl = track.getAlbum().getExternalUrls().getExternalUrls().get("spotify");
                         }
@@ -160,7 +171,6 @@ public class ReceivingData {
 
                         String trackName = track.getName();
 
-                        // UPC/EAN ermitteln (nur 1x pro Album)
                         String barcode = null;
                         if (albumId != null) {
                             barcode = albumBarcodeCache.get(albumId);
@@ -179,27 +189,34 @@ public class ReceivingData {
 
                         String discogsUrl = null;
                         if (discogsService != null) {
-                            // Priorisiere Suche per Barcode, ansonsten heuristische Pipeline
                             discogsUrl = discogsService.findAlbumUri(artistName, albumName, releaseYear, null, barcode).orElse(null);
                         }
 
                         tracks.add(new TrackData(trackName, artistName, albumName, releaseYear, albumUrl, discogsUrl, barcode, coverUrl));
                     } else if (item instanceof Episode episode) {
-                        // Optional: Episoden überspringen oder anders behandeln
                         System.out.println("Überspringe Podcast-Episode: " + episode.getName());
                     } else if (item != null) {
                         System.out.println("Unbekannter Item-Typ: " + item.getClass().getName());
                     }
                 }
 
-                offset += items.length;
-                // Wenn es keine nächste Seite gibt, aufhören
-                if (page.getNext() == null) {
-                    break;
+                currentOffset += items.length;
+                if (paginated) {
+                    remaining -= items.length;
+                    if (currentOffset >= total) {
+                        break;
+                    }
+                } else {
+                    if (page.getNext() == null) {
+                        break;
+                    }
                 }
             }
 
-            return new PlaylistData(playlistName, playlistCoverUrl, playlistUrl, tracks);
+            boolean hasMore = paginated && currentOffset < total;
+            int nextOffset = paginated ? Math.min(currentOffset, total) : currentOffset;
+
+            return new PlaylistData(playlistName, playlistCoverUrl, playlistUrl, tracks, total, safeOffset, nextOffset, hasMore);
 
         } catch (IOException | SpotifyWebApiException | ParseException e) {
             System.err.println("Fehler beim Laden der Playlist: " + e.getMessage());

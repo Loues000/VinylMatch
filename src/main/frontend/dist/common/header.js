@@ -2,6 +2,14 @@ export async function injectHeader() {
     const container = document.getElementById("header");
     if (!container)
         return;
+    const emitAuthState = (loggedIn) => {
+        try {
+            window.dispatchEvent(new CustomEvent("vm:auth-state", { detail: { loggedIn } }));
+        }
+        catch (_a) {
+            /* ignore */
+        }
+    };
     try {
         const res = await fetch("/common/header.html", { cache: "no-cache" });
         if (!res.ok)
@@ -11,7 +19,9 @@ export async function injectHeader() {
         const path = location.pathname.toLowerCase();
         container.querySelectorAll("a[href]").forEach((a) => {
             const hrefPath = a.pathname.toLowerCase();
-            if (hrefPath === path || (path === "/" && hrefPath === "/playlist.html")) {
+            const normalizedHref = hrefPath === "/" ? "/home.html" : hrefPath;
+            const normalizedPath = path === "/" ? "/home.html" : path;
+            if (normalizedHref === normalizedPath) {
                 a.classList.add("active");
             }
         });
@@ -23,7 +33,7 @@ export async function injectHeader() {
             btn.href = "#";
             btn.className = loggedIn ? "spotify-btn logged-in" : "spotify-btn";
             btn.innerHTML = `
-                <img src="https://storage.googleapis.com/pr-newsroom-wp/1/2018/11/Spotify_Logo_RGB_White.png" 
+                <img src="https://storage.googleapis.com/pr-newsroom-wp/1/2018/11/Spotify_Logo_RGB_White.png"
                      alt="Spotify Logo">
                 ${loggedIn ? "Abmelden" : "Log in with Spotify"}
             `;
@@ -40,6 +50,7 @@ export async function injectHeader() {
                 oldBtnLi.remove();
             // Add new
             navRight.appendChild(createSpotifyButton(loggedIn));
+            emitAuthState(!!loggedIn);
             // Event hinzufügen
             const spotifyBtn = container.querySelector("#spotify-login-btn");
             if (spotifyBtn) {
@@ -52,7 +63,8 @@ export async function injectHeader() {
                             if (!r.ok && r.status !== 204)
                                 throw new Error("HTTP " + r.status);
                         }
-                        catch { }
+                        catch (_a) {
+                        }
                         updateSpotifyButton(false);
                     }
                     else {
@@ -90,6 +102,18 @@ export async function injectHeader() {
         };
         // Initial mit nicht-eingeloggt starten
         updateSpotifyButton(false);
+        try {
+            const statusRes = await fetch("/api/auth/status", { cache: "no-cache" });
+            if (statusRes.ok) {
+                const status = await statusRes.json();
+                if (typeof status?.loggedIn === "boolean") {
+                    updateSpotifyButton(status.loggedIn);
+                }
+            }
+        }
+        catch (e) {
+            console.warn("Konnte Auth-Status nicht abrufen:", e);
+        }
     }
     catch (e) {
         console.error("Header laden fehlgeschlagen:", e);

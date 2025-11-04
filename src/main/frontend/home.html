@@ -14,10 +14,32 @@
 <body>
 <div id="header"></div>
 
+<div id="global-loading" class="loading-overlay hidden" role="alert" aria-live="assertive">
+  <div class="spinner" aria-hidden="true"></div>
+  <p id="global-loading-text">Playlist wird geladen …</p>
+</div>
+
 <div class="page-container">
   <aside class="sidebar">
-    <h3>Zuletzt geöffnet</h3>
-    <div id="recent-list" class="recent-list"></div>
+    <h3>Playlists</h3>
+    <div class="sidebar-tabs" role="tablist" aria-label="Playlist-Quellen">
+      <button id="recent-tab" class="sidebar-tab active" type="button" role="tab" aria-selected="true" aria-controls="recent-panel" data-target="recent-panel">
+        Verlauf
+      </button>
+      <button id="user-tab" class="sidebar-tab" type="button" role="tab" aria-selected="false" aria-controls="user-panel" data-target="user-panel" disabled>
+        Deine Playlists
+      </button>
+    </div>
+
+    <div class="sidebar-panel" id="recent-panel" role="tabpanel" aria-labelledby="recent-tab">
+      <div id="recent-list" class="recent-list"></div>
+      <p class="sidebar-empty" data-context="recent">Noch keine zuletzt geöffneten Playlists.</p>
+    </div>
+
+    <div class="sidebar-panel hidden" id="user-panel" role="tabpanel" aria-labelledby="user-tab" aria-disabled="true">
+      <div id="user-playlist-list" class="recent-list"></div>
+      <p class="sidebar-empty" data-context="user">Melde dich mit Spotify an, um deine Playlists zu sehen.</p>
+    </div>
   </aside>
 
   <main>
@@ -36,8 +58,8 @@
         </div>
       </div>
 
-      <div id="generated-links" style="display:none; margin-top:10px;">
-        <p>API Link: <a id="api-link" href="#" target="_blank"></a></p>
+      <div id="generated-links" class="generated-links" aria-live="polite">
+        <p>API Link: <a id="api-link" href="#" target="_blank" rel="noopener noreferrer"></a></p>
         <p>Playlist Page: <a id="playlist-page-link" href="#"></a></p>
       </div>
     </div>
