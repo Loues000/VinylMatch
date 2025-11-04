@@ -53,6 +53,10 @@
     color: #ccc;
 }
 
+.navigation a.active {
+    color: #1DB954;
+}
+
 .spotify-btn {
     display: inline-flex;
     align-items: center;

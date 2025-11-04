@@ -11,7 +11,9 @@ export async function injectHeader() {
         const path = location.pathname.toLowerCase();
         container.querySelectorAll("a[href]").forEach((a) => {
             const hrefPath = a.pathname.toLowerCase();
-            if (hrefPath === path || (path === "/" && hrefPath === "/playlist.html")) {
+            const normalizedHref = hrefPath === "/" ? "/home.html" : hrefPath;
+            const normalizedPath = path === "/" ? "/home.html" : path;
+            if (normalizedHref === normalizedPath) {
                 a.classList.add("active");
             }
         });
@@ -90,6 +92,18 @@ export async function injectHeader() {
         };
         // Initial mit nicht-eingeloggt starten
         updateSpotifyButton(false);
+        try {
+            const statusRes = await fetch("/api/auth/status", { cache: "no-cache" });
+            if (statusRes.ok) {
+                const status = await statusRes.json();
+                if (typeof status?.loggedIn === "boolean") {
+                    updateSpotifyButton(status.loggedIn);
+                }
+            }
+        }
+        catch (e) {
+            console.warn("Konnte Auth-Status nicht abrufen:", e);
+        }
     }
     catch (e) {
         console.error("Header laden fehlgeschlagen:", e);
