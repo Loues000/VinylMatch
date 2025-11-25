@@ -236,6 +236,85 @@ public class ApiServer {
             }
         });
 
+        // Discogs-Suche (Batch, asynchron zum Playlist-Laden)
+        server.createContext("/api/discogs/batch", exchange -> {
+            try {
+                addCorsHeaders(exchange.getResponseHeaders());
+                String method = exchange.getRequestMethod();
+                if ("OPTIONS".equalsIgnoreCase(method)) {
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+                if (!"POST".equalsIgnoreCase(method)) {
+                    sendError(exchange, 405, "Nur POST erlaubt");
+                    return;
+                }
+
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                java.util.Map payload = MAPPER.readValue(body, java.util.Map.class);
+                Object tracksObj = payload.get("tracks");
+                if (!(tracksObj instanceof java.util.List<?> tracksList) || tracksList.isEmpty()) {
+                    sendError(exchange, 400, "Payload muss ein 'tracks'-Array enthalten");
+                    return;
+                }
+
+                com.hctamlyniv.DiscogsService discogs = getDiscogsService();
+                if (discogs == null) {
+                    sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
+                    return;
+                }
+
+                java.util.List<java.util.Map<String, Object>> results = new java.util.ArrayList<>();
+                for (Object entry : tracksList) {
+                    if (!(entry instanceof java.util.Map<?, ?> track)) {
+                        continue;
+                    }
+                    String key = stringValue(track.get("key"));
+                    Integer index = intValue(track.get("index"));
+                    String artist = stringValue(track.get("artist"));
+                    String album = stringValue(track.get("album"));
+                    Integer year = intValue(track.get("releaseYear"));
+                    String trackTitle = stringValue(track.get("track"));
+                    String barcode = stringValue(track.get("barcode"));
+
+                    java.util.Map<String, Object> resultEntry = new java.util.HashMap<>();
+                    if (key != null) {
+                        resultEntry.put("key", key);
+                    }
+                    if (index != null) {
+                        resultEntry.put("index", index);
+                    }
+
+                    if (artist == null || album == null) {
+                        resultEntry.put("url", null);
+                        resultEntry.put("cacheHit", false);
+                        results.add(resultEntry);
+                        continue;
+                    }
+
+                    java.util.Optional<String> cached = discogs.peekCachedUri(artist, album, year, barcode);
+                    boolean cacheHit = cached.isPresent();
+                    java.util.Optional<String> urlOpt = cached.isPresent()
+                            ? cached
+                            : discogs.findAlbumUri(artist, album, year, trackTitle, barcode);
+
+                    resultEntry.put("cacheHit", cacheHit);
+                    resultEntry.put("url", urlOpt.orElse(null));
+                    results.add(resultEntry);
+                }
+
+                String json = MAPPER.writeValueAsString(java.util.Map.of("results", results));
+                byte[] out = json.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, out.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(out);
+                }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler bei Discogs-Batch: " + e.getMessage());
+            }
+        });
+
         // Discogs-Suche (on-demand)
         server.createContext("/api/discogs/search", exchange -> {
             try {
@@ -422,6 +501,32 @@ public class ApiServer {
         server.setExecutor(Executors.newFixedThreadPool(5));
         server.start();
         System.out.println("Frontend läuft auf http://localhost:" + port + "/");
+    }
+
+    private static Integer intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String s) {
+            String trimmed = s.trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            try {
+                return Integer.parseInt(trimmed);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static String stringValue(Object value) {
+        if (value instanceof String s) {
+            String trimmed = s.trim();
+            return trimmed.isEmpty() ? null : trimmed;
+        }
+        return null;
     }
 
     private static com.hctamlyniv.DiscogsService getDiscogsService() {

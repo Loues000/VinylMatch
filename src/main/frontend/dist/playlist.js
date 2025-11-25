@@ -2,6 +2,17 @@ import { readCachedPlaylist, storePlaylistChunk } from "./storage.js";
 const PLACEHOLDER_IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const VIEW_MODE_KEY = "vm:playlistViewMode";
 const DEFAULT_VIEW_MODE = "list";
+const DEFAULT_PAGE_SIZE = 20;
+const DISCOGS_BATCH_SIZE = 5;
+
+const discogsState = {
+    queue: [],
+    requested: new Set(),
+    completed: new Set(),
+    processing: false,
+};
+
+const trackRegistry = new Map();
 function getStoredViewMode() {
     try {
         const stored = localStorage.getItem(VIEW_MODE_KEY);
@@ -19,9 +30,181 @@ function storeViewMode(mode) {
         /* ignore */
     }
 }
+
+function normalizeKeyPart(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    return value.toString().trim().toLowerCase();
+}
+
+function buildTrackKey(track, index) {
+    if (!track) {
+        return null;
+    }
+    if (track.spotifyTrackId) {
+        return `id:${track.spotifyTrackId}`;
+    }
+    const idx = typeof index === "number" ? `idx:${index}` : "idx:-1";
+    return [
+        idx,
+        normalizeKeyPart(track.artist),
+        normalizeKeyPart(track.album),
+        normalizeKeyPart(track.trackName),
+        track.releaseYear ?? "",
+    ].join("|");
+}
+
+function registerTrackElement(key, data) {
+    if (!key || !data) {
+        return;
+    }
+    trackRegistry.set(key, data);
+}
+
+function clearTrackRegistry() {
+    trackRegistry.clear();
+}
+
+function getRegistryEntry(key) {
+    if (!key) {
+        return undefined;
+    }
+    return trackRegistry.get(key);
+}
+
+function resetDiscogsState() {
+    discogsState.queue.length = 0;
+    discogsState.requested.clear();
+    discogsState.completed.clear();
+    discogsState.processing = false;
+}
+
+function applyDiscogsResult(result) {
+    if (!result)
+        return;
+    const key = typeof result.key === "string" ? result.key : null;
+    const index = typeof result.index === "number" ? result.index : null;
+    const url = typeof result.url === "string" && result.url ? result.url : null;
+    if (key) {
+        discogsState.requested.delete(key);
+        discogsState.completed.add(key);
+    }
+    if (index !== null && index !== undefined && Array.isArray(state.aggregated?.tracks)) {
+        const track = state.aggregated.tracks[index];
+        if (track) {
+            track.discogsAlbumUrl = url;
+            track.discogsStatus = url ? "found" : "not-found";
+        }
+    }
+    const entry = key ? getRegistryEntry(key) : undefined;
+    const targetEntry = entry ?? (index !== null && index !== undefined
+        ? getRegistryEntry(buildTrackKey(state.aggregated?.tracks?.[index], index))
+        : undefined);
+    if (targetEntry?.setDiscogsState) {
+        targetEntry.setDiscogsState(url ? "found" : "not-found", url ?? undefined);
+    }
+}
+
+async function processDiscogsQueue() {
+    if (discogsState.processing) {
+        return;
+    }
+    discogsState.processing = true;
+    try {
+        while (discogsState.queue.length) {
+            const batch = [];
+            while (discogsState.queue.length && batch.length < DISCOGS_BATCH_SIZE) {
+                const candidate = discogsState.queue.shift();
+                if (!candidate) {
+                    continue;
+                }
+                if (candidate.key && discogsState.completed.has(candidate.key)) {
+                    continue;
+                }
+                batch.push(candidate);
+            }
+            if (!batch.length) {
+                continue;
+            }
+            const payload = {
+                tracks: batch.map((item) => ({
+                    key: item.key,
+                    index: item.index,
+                    artist: item.track?.artist ?? null,
+                    album: item.track?.album ?? null,
+                    releaseYear: item.track?.releaseYear ?? null,
+                    track: item.track?.trackName ?? null,
+                    barcode: item.track?.barcode ?? null,
+                })),
+            };
+            let response;
+            try {
+                response = await fetch("/api/discogs/batch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                if (Array.isArray(data?.results)) {
+                    for (const result of data.results) {
+                        applyDiscogsResult(result);
+                    }
+                }
+            }
+            catch (error) {
+                console.warn("Discogs-Batch fehlgeschlagen:", error);
+                for (const item of batch) {
+                    if (item?.key) {
+                        discogsState.requested.delete(item.key);
+                    }
+                }
+            }
+        }
+    }
+    finally {
+        discogsState.processing = false;
+    }
+}
+
+function queueDiscogsLookups(startIndex, tracks) {
+    if (!Array.isArray(tracks)) {
+        return;
+    }
+    for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
+        if (!track) {
+            continue;
+        }
+        const index = (typeof startIndex === "number" ? startIndex : 0) + i;
+        const key = buildTrackKey(track, index);
+        if (!key) {
+            continue;
+        }
+        if (track.discogsAlbumUrl) {
+            discogsState.completed.add(key);
+            applyDiscogsResult({ key, index, url: track.discogsAlbumUrl });
+            continue;
+        }
+        track.discogsStatus = "pending";
+        if (discogsState.completed.has(key) || discogsState.requested.has(key)) {
+            continue;
+        }
+        discogsState.requested.add(key);
+        discogsState.queue.push({ key, index, track });
+    }
+    processDiscogsQueue();
+}
+
+function markDiscogsResult(key, index, url) {
+    applyDiscogsResult({ key, index, url });
+}
 let state = {
     id: null,
-    pageSize: 50,
+    pageSize: DEFAULT_PAGE_SIZE,
     aggregated: null,
     viewMode: getStoredViewMode(),
 };
@@ -46,8 +229,8 @@ function updateSubtitle(aggregated) {
     const subtitle = document.querySelector("#playlist-header .playlist-subtitle");
     if (!subtitle)
         return;
-    const total = aggregated?.totalTracks ?? loaded;
-    subtitle.textContent = `${total} Songs`
+    const total = aggregated?.totalTracks ?? aggregated?.tracks?.filter(Boolean).length ?? 0;
+    subtitle.textContent = `${total} Songs`;
 }
 function renderHeader(aggregated) {
     const header = document.getElementById("playlist-header");
@@ -131,11 +314,21 @@ function buildVendorLinks(track) {
     });
 }
 
-function createTrackElement(track) {
-    const quality = determineMatchQuality(track.discogsAlbumUrl);
+function createTrackElement(track, index) {
+    const key = buildTrackKey(track, index);
+    const initialState = track.discogsAlbumUrl
+        ? "found"
+        : (track.discogsStatus === "not-found" ? "not-found" : "pending");
+    const initialQuality = track.discogsAlbumUrl
+        ? determineMatchQuality(track.discogsAlbumUrl)
+        : (initialState === "not-found"
+            ? { level: "poor", label: "Kein Treffer" }
+            : { level: "pending", label: "Wird gesucht…" });
     const trackDiv = document.createElement("div");
     trackDiv.className = "track";
-    trackDiv.dataset.matchQuality = quality.level;
+    if (key)
+        trackDiv.dataset.trackKey = key;
+    trackDiv.dataset.matchQuality = initialQuality.level;
     const img = document.createElement("img");
     img.className = "cover";
     img.src = track.coverUrl || PLACEHOLDER_IMG;
@@ -163,7 +356,7 @@ function createTrackElement(track) {
     artistsDiv.textContent = track.artist;
     const metaRow = document.createElement("div");
     metaRow.className = "meta-row";
-    const qualityBadge = createQualityBadge(quality);
+    const qualityBadge = createQualityBadge(initialQuality);
     metaRow.appendChild(qualityBadge);
     if (typeof track.releaseYear === "number") {
         const year = document.createElement("span");
@@ -177,95 +370,120 @@ function createTrackElement(track) {
     infoDiv.appendChild(metaRow);
     const actions = document.createElement("div");
     actions.className = "actions";
-    const createDiscogsButton = (active) => {
-        const a = document.createElement("a");
-        a.textContent = "🔍";
-        a.setAttribute("aria-label", "Auf Discogs suchen");
-        const setActive = (on) => {
-            if (on) {
-                a.classList.remove("inactive");
-                a.setAttribute("aria-disabled", "false");
-            }
-            else {
-                a.classList.add("inactive");
-                a.setAttribute("aria-disabled", "true");
-            }
-        };
-        setActive(active);
-        a._setActive = setActive;
-        return a;
-    };
-    const discogsBtn = createDiscogsButton(Boolean(track.discogsAlbumUrl));
+    const discogsBtn = document.createElement("a");
+    discogsBtn.textContent = "🔍";
+    discogsBtn.setAttribute("aria-label", "Auf Discogs suchen");
+    discogsBtn.href = "#";
+    discogsBtn.classList.add("discogs-action");
     actions.appendChild(discogsBtn);
-    const applyMatchQuality = (url) => {
-        if (!url)
-            return;
-        const updatedQuality = determineMatchQuality(url);
-        track.discogsAlbumUrl = url;
-        trackDiv.dataset.matchQuality = updatedQuality.level;
-        qualityBadge.textContent = updatedQuality.label;
-        qualityBadge.className = `match-quality match-quality--${updatedQuality.level}`;
-        if (discogsBtn._setActive)
-            discogsBtn._setActive(true);
-        discogsBtn.href = url;
-        discogsBtn.target = "_blank";
-        discogsBtn.rel = "noopener noreferrer";
-        discogsBtn.title = updatedQuality.level === "good" ? "Auf Discogs ansehen" : "Discogs-Suchergebnis";
+    const updateBadge = (quality) => {
+        qualityBadge.textContent = quality.label;
+        qualityBadge.className = `match-quality match-quality--${quality.level}`;
+        trackDiv.dataset.matchQuality = quality.level;
+    };
+    const setDiscogsState = (state, url) => {
+        trackDiv.dataset.discogsState = state;
         actions.querySelectorAll(".vendor-link").forEach((el) => el.remove());
-        if (updatedQuality.level === "good") {
-            for (const link of buildVendorLinks(track)) {
-                actions.appendChild(link);
+        if (state === "found" && url) {
+            const quality = determineMatchQuality(url);
+            updateBadge(quality);
+            track.discogsAlbumUrl = url;
+            track.discogsStatus = "found";
+            discogsBtn.classList.remove("inactive", "pending");
+            discogsBtn.setAttribute("aria-disabled", "false");
+            discogsBtn.href = url;
+            discogsBtn.target = "_blank";
+            discogsBtn.rel = "noopener noreferrer";
+            discogsBtn.title = quality.level === "good" ? "Auf Discogs ansehen" : "Discogs-Suchergebnis";
+            if (quality.level === "good") {
+                for (const link of buildVendorLinks(track)) {
+                    actions.appendChild(link);
+                }
             }
         }
-    };
-    if (track.discogsAlbumUrl) {
-        applyMatchQuality(track.discogsAlbumUrl);
-    }
-    else {
-        discogsBtn.href = "#";
-        let searching = false;
-        discogsBtn.addEventListener("click", async (ev) => {
-            ev.preventDefault();
-            if (searching)
-                return;
-            searching = true;
-            discogsBtn.classList.add("inactive");
+        else if (state === "pending") {
+            updateBadge({ level: "pending", label: "Wird gesucht…" });
+            track.discogsStatus = "pending";
+            discogsBtn.href = "#";
+            discogsBtn.classList.add("inactive", "pending");
             discogsBtn.setAttribute("aria-disabled", "true");
-            try {
-                const res = await fetch("/api/discogs/search", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        artist: track.artist,
-                        album: track.album,
-                        releaseYear: track.releaseYear ?? null,
-                        track: track.trackName,
-                    }),
-                });
-                if (!res.ok)
-                    throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                const url = data?.url;
-                if (url) {
-                    applyMatchQuality(url);
-                    discogsBtn.click();
-                }
+            discogsBtn.removeAttribute("target");
+            discogsBtn.removeAttribute("rel");
+            discogsBtn.title = "Discogs-Suche läuft …";
+        }
+        else {
+            updateBadge({ level: "poor", label: "Kein Treffer" });
+            track.discogsAlbumUrl = null;
+            track.discogsStatus = "not-found";
+            discogsBtn.href = "#";
+            discogsBtn.classList.remove("pending");
+            discogsBtn.classList.remove("inactive");
+            discogsBtn.setAttribute("aria-disabled", "false");
+            discogsBtn.removeAttribute("target");
+            discogsBtn.removeAttribute("rel");
+            discogsBtn.title = "Erneut nach Discogs suchen";
+        }
+    };
+    registerTrackElement(key, { index, setDiscogsState, element: trackDiv });
+    let manualSearching = false;
+    discogsBtn.addEventListener("click", async (ev) => {
+        if (discogsBtn.getAttribute("aria-disabled") === "true") {
+            ev.preventDefault();
+            return;
+        }
+        if (track.discogsAlbumUrl) {
+            return;
+        }
+        ev.preventDefault();
+        if (manualSearching) {
+            return;
+        }
+        manualSearching = true;
+        setDiscogsState("pending");
+        try {
+            const res = await fetch("/api/discogs/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    artist: track.artist,
+                    album: track.album,
+                    releaseYear: track.releaseYear ?? null,
+                    track: track.trackName,
+                }),
+            });
+            if (!res.ok)
+                throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            const url = typeof data?.url === "string" ? data.url : null;
+            if (url) {
+                markDiscogsResult(key, index, url);
+                manualSearching = false;
+                window.open(url, "_blank", "noopener");
+                return;
             }
-            catch (e) {
-                console.warn("Discogs-Suche fehlgeschlagen:", e);
+        }
+        catch (error) {
+            console.warn("Discogs-Suche fehlgeschlagen:", error);
+        }
+        finally {
+            if (!track.discogsAlbumUrl) {
+                setDiscogsState("not-found");
             }
-            finally {
-                searching = false;
-                if (discogsBtn.href === "#" || discogsBtn.href.endsWith("#")) {
-                    discogsBtn.classList.remove("inactive");
-                    discogsBtn.setAttribute("aria-disabled", "false");
-                }
-            }
-        });
-    }
+            manualSearching = false;
+        }
+    });
     trackDiv.appendChild(img);
     trackDiv.appendChild(infoDiv);
     trackDiv.appendChild(actions);
+    if (initialState === "found" && track.discogsAlbumUrl) {
+        setDiscogsState("found", track.discogsAlbumUrl);
+    }
+    else if (initialState === "not-found") {
+        setDiscogsState("not-found");
+    }
+    else {
+        setDiscogsState("pending");
+    }
     return trackDiv;
 }
 
@@ -310,6 +528,7 @@ function renderTracks(aggregated, options = {}) {
     const startIndex = options.startIndex ?? 0;
     if (options.reset) {
         container.textContent = "";
+        clearTrackRegistry();
     }
     const tracks = aggregated?.tracks || [];
     if (!tracks.length && options.reset) {
@@ -323,7 +542,7 @@ function renderTracks(aggregated, options = {}) {
         const track = tracks[i];
         if (!track)
             continue;
-        container.appendChild(createTrackElement(track));
+        container.appendChild(createTrackElement(track, i));
     }
 }
 function updateLoadMore(aggregated) {
@@ -359,8 +578,13 @@ async function fetchPlaylistChunk(id, offset, limit, { reset } = { reset: false 
         updateSubtitle(merged);
     }
     updateLoadMore(merged);
+    const loadedOffset = typeof payload?.offset === "number" ? payload.offset : offset;
+    const loadedTracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
+    if (loadedTracks.length) {
+        queueDiscogsLookups(loadedOffset, loadedTracks);
+    }
 }
-async function loadPlaylist(id, pageSize = 50) {
+async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
     const header = document.getElementById("playlist-header");
     const container = document.getElementById("playlist");
     if (!header || !container) {
@@ -375,6 +599,7 @@ async function loadPlaylist(id, pageSize = 50) {
         aggregated: null,
         viewMode: state.viewMode || getStoredViewMode(),
     };
+    resetDiscogsState();
     const cached = readCachedPlaylist(id || undefined);
     if (!state.id && cached?.id) {
         state.id = cached.id;
@@ -389,6 +614,9 @@ async function loadPlaylist(id, pageSize = 50) {
         renderHeader(state.aggregated);
         renderTracks(state.aggregated, { reset: true });
         updateLoadMore(state.aggregated);
+        if (Array.isArray(state.aggregated?.tracks) && state.aggregated.tracks.length) {
+            queueDiscogsLookups(0, state.aggregated.tracks);
+        }
     }
     else {
         container.textContent = "Loading...";

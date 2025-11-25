@@ -19,8 +19,12 @@
   <p id="global-loading-text">Playlist wird geladen …</p>
 </div>
 
-<div class="page-container">
-  <aside class="sidebar">
+<div class="page-container" id="home-page">
+  <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-controls="home-sidebar" aria-expanded="true">
+    Filter &amp; Playlists
+  </button>
+  <div class="sidebar-backdrop hidden" id="sidebar-backdrop"></div>
+  <aside class="sidebar" id="home-sidebar">
     <h3>Playlists</h3>
     <div class="sidebar-tabs" role="tablist" aria-label="Playlist-Quellen">
       <button id="recent-tab" class="sidebar-tab active" type="button" role="tab" aria-selected="true" aria-controls="recent-panel" data-target="recent-panel">

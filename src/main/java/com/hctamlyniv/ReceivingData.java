@@ -189,10 +189,11 @@ public class ReceivingData {
 
                         String discogsUrl = null;
                         if (discogsService != null) {
-                            discogsUrl = discogsService.findAlbumUri(artistName, albumName, releaseYear, null, barcode).orElse(null);
+                            discogsUrl = discogsService.peekCachedUri(artistName, albumName, releaseYear, barcode)
+                                    .orElse(null);
                         }
 
-                        tracks.add(new TrackData(trackName, artistName, albumName, releaseYear, albumUrl, discogsUrl, barcode, coverUrl));
+                        tracks.add(new TrackData(track.getId(), trackName, artistName, albumName, releaseYear, albumUrl, discogsUrl, barcode, coverUrl));
                     } else if (item instanceof Episode episode) {
                         System.out.println("Überspringe Podcast-Episode: " + episode.getName());
                     } else if (item != null) {

@@ -1,7 +1,7 @@
 import { injectHeader } from "./common/header.js";
 import { loadPlaylist } from "./playlist.js";
 import { readRecents, storePlaylistChunk, readCachedPlaylist } from "./storage.js";
-const PLAYLIST_PAGE_SIZE = 50;
+const PLAYLIST_PAGE_SIZE = 20;
 function showGlobalLoading(message = "Playlist wird geladen …") {
     const overlay = document.getElementById("global-loading");
     if (!overlay)
@@ -95,6 +95,56 @@ window.addEventListener("DOMContentLoaded", () => {
     const path = location.pathname.toLowerCase();
     if (path === "/" || path.endsWith("/home.html")) {
         renderRecents();
+        const pageContainer = document.getElementById("home-page");
+        const sidebarToggle = document.getElementById("sidebar-toggle");
+        const sidebar = document.getElementById("home-sidebar");
+        const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+        const setSidebarOpen = (open) => {
+            if (pageContainer) {
+                pageContainer.classList.toggle("sidebar-open", open);
+            }
+            if (sidebarToggle) {
+                sidebarToggle.setAttribute("aria-expanded", String(Boolean(open)));
+            }
+            if (sidebar) {
+                sidebar.dataset.open = open ? "true" : "false";
+            }
+            if (sidebarBackdrop) {
+                sidebarBackdrop.classList.toggle("hidden", !open);
+            }
+        };
+        const evaluateSidebar = () => {
+            const isDesktop = window.matchMedia("(min-width: 1101px)").matches;
+            if (isDesktop) {
+                if (pageContainer) {
+                    pageContainer.classList.remove("sidebar-open");
+                }
+                if (sidebarToggle) {
+                    sidebarToggle.setAttribute("aria-expanded", "true");
+                }
+                if (sidebarBackdrop) {
+                    sidebarBackdrop.classList.add("hidden");
+                }
+                if (sidebar) {
+                    sidebar.dataset.open = "true";
+                }
+            }
+            else if (!pageContainer?.classList.contains("sidebar-open")) {
+                setSidebarOpen(false);
+            }
+        };
+        sidebarToggle?.addEventListener("click", () => {
+            const isOpen = pageContainer?.classList.contains("sidebar-open");
+            setSidebarOpen(!isOpen);
+        });
+        sidebarBackdrop?.addEventListener("click", () => setSidebarOpen(false));
+        window.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !window.matchMedia("(min-width: 1101px)").matches) {
+                setSidebarOpen(false);
+            }
+        });
+        window.addEventListener("resize", evaluateSidebar);
+        evaluateSidebar();
         const recentTab = document.getElementById("recent-tab");
         const userTab = document.getElementById("user-tab");
         const userPanel = document.getElementById("user-panel");
