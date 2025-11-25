@@ -207,6 +207,10 @@ body {
     box-shadow: none;
 }
 
+.track[data-discogs-state="pending"] .actions a {
+    cursor: wait;
+}
+
 .match-quality {
     display: inline-flex;
     align-items: center;
@@ -240,6 +244,11 @@ body {
 .match-quality--poor {
     background: rgba(248, 113, 113, 0.18);
     color: #b91c1c;
+}
+
+.match-quality--pending {
+    background: rgba(107, 114, 128, 0.16);
+    color: var(--muted);
 }
 
 .playlist-toolbar {

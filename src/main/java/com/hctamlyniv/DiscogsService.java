@@ -10,11 +10,18 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.text.Normalizer;
 
 /**
@@ -29,6 +36,9 @@ public class DiscogsService {
 
     private static final String API_BASE = "https://api.discogs.com";
 
+    private static final Path CACHE_DIR = Paths.get("cache", "discogs");
+    private static final Path CACHE_FILE = CACHE_DIR.resolve("albums.json");
+
     private final HttpClient http;
     private final ObjectMapper mapper = new ObjectMapper();
     private final String token;          // persönlicher Discogs-User-Token
@@ -37,6 +47,7 @@ public class DiscogsService {
     // Sehr einfacher In-Memory-Cache (Artist|Album|Year -> URI)
     private final Map<String, String> cache = new ConcurrentHashMap<>();
     private final Map<String, String> barcodeCache = new ConcurrentHashMap<>();
+    private final ReentrantLock persistenceLock = new ReentrantLock();
 
     public DiscogsService(String token, String userAgent) {
         this.token = token;
@@ -44,6 +55,86 @@ public class DiscogsService {
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
+
+        loadPersistedCache();
+    }
+
+    private void loadPersistedCache() {
+        try {
+            if (!Files.exists(CACHE_FILE)) {
+                return;
+            }
+            JsonNode root = mapper.readTree(CACHE_FILE.toFile());
+            JsonNode entries = root.get("entries");
+            if (entries != null && entries.isObject()) {
+                Iterator<Map.Entry<String, JsonNode>> fields = entries.fields();
+                while (fields.hasNext()) {
+                    Map.Entry<String, JsonNode> entry = fields.next();
+                    if (entry.getValue() != null && !entry.getValue().isNull()) {
+                        cache.put(entry.getKey(), entry.getValue().asText());
+                    }
+                }
+            }
+            JsonNode barcodes = root.get("barcodes");
+            if (barcodes != null && barcodes.isObject()) {
+                Iterator<Map.Entry<String, JsonNode>> fields = barcodes.fields();
+                while (fields.hasNext()) {
+                    Map.Entry<String, JsonNode> entry = fields.next();
+                    if (entry.getValue() != null && !entry.getValue().isNull()) {
+                        barcodeCache.put(entry.getKey(), entry.getValue().asText());
+                    }
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("[Discogs] Konnte Cache nicht laden: " + e.getMessage());
+        }
+    }
+
+    private void persistCache() {
+        persistenceLock.lock();
+        try {
+            Files.createDirectories(CACHE_DIR);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("updatedAt", Instant.now().toString());
+            payload.put("entries", new HashMap<>(cache));
+            payload.put("barcodes", new HashMap<>(barcodeCache));
+            mapper.writerWithDefaultPrettyPrinter().writeValue(CACHE_FILE.toFile(), payload);
+        } catch (IOException e) {
+            System.err.println("[Discogs] Konnte Cache nicht speichern: " + e.getMessage());
+        } finally {
+            persistenceLock.unlock();
+        }
+    }
+
+    private void rememberResult(String cacheKey, String url, String barcode) {
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        if (cacheKey != null && !cacheKey.isBlank()) {
+            cache.put(cacheKey, url);
+        }
+        if (barcode != null && !barcode.isBlank()) {
+            barcodeCache.put(barcode, url);
+        }
+        persistCache();
+    }
+
+    private String buildCacheKey(String artist, String album, Integer releaseYear) {
+        return (artist == null ? "" : artist) + "|" + (album == null ? "" : album) + "|" + (releaseYear == null ? "" : releaseYear);
+    }
+
+    public Optional<String> peekCachedUri(String artist, String album, Integer releaseYear, String barcode) {
+        if (barcode != null && !barcode.isBlank()) {
+            String byBarcode = barcodeCache.get(barcode);
+            if (byBarcode != null) {
+                return Optional.of(byBarcode);
+            }
+        }
+        String key = buildCacheKey(artist != null ? artist.trim() : null,
+                album != null ? album.trim() : null,
+                releaseYear);
+        String cached = cache.get(key);
+        return cached != null ? Optional.of(cached) : Optional.empty();
     }
 
     /**
@@ -63,7 +154,7 @@ public class DiscogsService {
         final String origAlbum = album == null ? null : album.trim();
         final String origTrack = trackTitle == null ? null : trackTitle.trim();
         final Integer year = releaseYear;
-        final String cacheKey = (origArtist == null ? "" : origArtist) + "|" + (origAlbum == null ? "" : origAlbum) + "|" + (year == null ? "" : year);
+        final String cacheKey = buildCacheKey(origArtist, origAlbum, year);
         if (barcode != null && !barcode.isBlank()) {
             String cachedBarcodeUrl = barcodeCache.get(barcode);
             if (cachedBarcodeUrl != null) {
@@ -74,12 +165,7 @@ public class DiscogsService {
                     Optional<String> byCode = searchByBarcode(barcode);
                     if (byCode.isPresent()) {
                         String url = byCode.get();
-                        barcodeCache.put(barcode, url);
-                        if ((origArtist != null && !origArtist.isBlank())
-                                || (origAlbum != null && !origAlbum.isBlank())
-                                || year != null) {
-                            cache.put(cacheKey, url);
-                        }
+                        rememberResult(cacheKey, url, barcode);
                         return Optional.of(url);
                     }
                 } catch (Exception ignored) {}
@@ -103,35 +189,36 @@ public class DiscogsService {
             // Pass A: q-Suche (roh)
             String q1 = ((artistStrict != null) ? artistStrict : "") + " " + ((origAlbum != null) ? origAlbum : "");
             r = searchOnceQ(q1, year, artistStrict, origAlbum);
-            if (r.isPresent()) { cache.put(cacheKey, r.get()); return r; }
+            if (r.isPresent()) { rememberResult(cacheKey, r.get(), barcode); return r; }
 
             // Pass B: q-Suche (leicht normalisiert)
             String lightAlbum = normalizeTitleLevel(origAlbum, NormLevel.LIGHT);
             String q2 = ((artistStrict != null) ? artistStrict : "") + " " + ((lightAlbum != null) ? lightAlbum : "");
             r = searchOnceQ(q2, year, artistStrict, origAlbum);
-            if (r.isPresent()) { cache.put(cacheKey, r.get()); return r; }
+            if (r.isPresent()) { rememberResult(cacheKey, r.get(), barcode); return r; }
 
             // Strukturierte Fallbacks (minimiert)
             // Master mit Jahr
             r = searchOnce(artistStrict, origAlbum, year, null, true);
-            if (r.isPresent()) { cache.put(cacheKey, r.get()); return r; }
+            if (r.isPresent()) { rememberResult(cacheKey, r.get(), barcode); return r; }
             // Release mit Jahr
             r = searchOnce(artistStrict, origAlbum, year, null, false);
-            if (r.isPresent()) { cache.put(cacheKey, r.get()); return r; }
+            if (r.isPresent()) { rememberResult(cacheKey, r.get(), barcode); return r; }
             // Master ohne Jahr
             r = searchOnce(artistStrict, origAlbum, null, null, true);
-            if (r.isPresent()) { cache.put(cacheKey, r.get()); return r; }
+            if (r.isPresent()) { rememberResult(cacheKey, r.get(), barcode); return r; }
             // Release ohne Jahr
             r = searchOnce(artistStrict, origAlbum, null, null, false);
-            if (r.isPresent()) { cache.put(cacheKey, r.get()); return r; }
+            if (r.isPresent()) { rememberResult(cacheKey, r.get(), barcode); return r; }
 
             // Fallback: Web-Suche auf Discogs öffnen (mindestens zur passenden Suchseite)
             String fallback = buildWebSearchUrl(artistStrict, origAlbum, year);
-            cache.put(cacheKey, fallback);
+            rememberResult(cacheKey, fallback, barcode);
             return Optional.of(fallback);
         } catch (Exception e) {
             // Bei Fehlern ebenfalls Fallback-Link zurückgeben
             String fallback = buildWebSearchUrl(normalizeArtistLevel(artist, NormLevel.HEAVY), album, releaseYear);
+            rememberResult(cacheKey, fallback, barcode);
             return Optional.of(fallback);
         }
     }

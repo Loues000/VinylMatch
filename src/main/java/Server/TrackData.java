@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class TrackData {
 
+    private final String spotifyTrackId;
     private final String trackName;
     private final String artist;
     private final String album;
@@ -15,7 +16,8 @@ public class TrackData {
     private final String coverUrl;
 
     @JsonCreator
-    public TrackData(@JsonProperty("trackName") String trackName,
+    public TrackData(@JsonProperty("spotifyTrackId") String spotifyTrackId,
+                     @JsonProperty("trackName") String trackName,
                      @JsonProperty("artist") String artist,
                      @JsonProperty("album") String album,
                      @JsonProperty("releaseYear") Integer releaseYear,
@@ -23,6 +25,7 @@ public class TrackData {
                      @JsonProperty("discogsAlbumUrl") String discogsAlbumUrl,
                      @JsonProperty("barcode") String barcode,
                      @JsonProperty("coverUrl") String coverUrl) {
+        this.spotifyTrackId = (spotifyTrackId != null && !spotifyTrackId.isBlank()) ? spotifyTrackId : null;
         this.trackName = (trackName != null && !trackName.isBlank()) ? trackName : "Unknown";
         this.artist = (artist != null && !artist.isBlank()) ? artist : "Unknown";
         this.album = (album != null && !album.isBlank()) ? album : "Unknown";
@@ -35,6 +38,10 @@ public class TrackData {
 
     public String getTrackName() {
         return trackName;
+    }
+
+    public String getSpotifyTrackId() {
+        return spotifyTrackId;
     }
 
     public String getArtist() {
@@ -68,7 +75,8 @@ public class TrackData {
     @Override
     public String toString() {
         return "TrackData{" +
-                "trackName='" + trackName + '\'' +
+                "spotifyTrackId='" + spotifyTrackId + '\'' +
+                ", trackName='" + trackName + '\'' +
                 ", artist='" + artist + '\'' +
                 ", album='" + album + '\'' +
                 ", releaseYear='" + releaseYear + '\'' +
