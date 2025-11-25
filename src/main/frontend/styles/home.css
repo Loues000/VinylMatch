@@ -259,6 +259,7 @@ textarea#playlist-url {
     width: 100%;
     min-height: 76px;
     max-height: 120px;
+    box-sizing: border-box;
     resize: none;
     padding: 12px 14px;
     font-size: 15px;
