@@ -150,7 +150,7 @@ public class DiscogsService {
     }
 
     public Optional<String> findAlbumUri(String artist, String album, Integer releaseYear, String trackTitle, String barcode) {
-        final String origArtist = artist == null ? null : artist.trim();
+        final String origArtist = extractPrimaryArtist(artist);
         final String origAlbum = album == null ? null : album.trim();
         final String origTrack = trackTitle == null ? null : trackTitle.trim();
         final Integer year = releaseYear;
@@ -446,6 +446,16 @@ public class DiscogsService {
         return norm.replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
     }
 
+    private static String extractPrimaryArtist(String artist) {
+        if (artist == null) return null;
+        String[] tokens = artist.split("\\s*(?:,|;|/|&|\\+|\\band\\b|\\s+(?:feat\\.?|featuring|ft\\.?|with|x)\\s+)\\s*", -1);
+        if (tokens.length == 0) {
+            return artist.trim();
+        }
+        String primary = tokens[0].trim();
+        return primary.isEmpty() ? artist.trim() : primary;
+    }
+
     private enum NormLevel { RAW, LIGHT, HEAVY }
 
     private static String normalizeTitleLevel(String title, NormLevel level) {
@@ -461,7 +471,7 @@ public class DiscogsService {
             case HEAVY:
                 t = stripDiacritics(t);
                 t = removeMarketingSuffixes(t);
-                t = removeParenthesesContent(t);
+                t = removeBracketedContent(t);
                 t = t.replace("&", "and");
                 t = canonicalizeWhitespace(t);
                 return t.trim();
@@ -472,10 +482,10 @@ public class DiscogsService {
 
     private static String normalizeArtistLevel(String artist, NormLevel level) {
         if (artist == null) return null;
-        String a = artist;
+        String a = extractPrimaryArtist(artist);
         switch (level) {
             case RAW:
-                return a.trim();
+                return a == null ? null : a.trim();
             case LIGHT:
                 a = stripDiacritics(a);
                 a = a.replaceAll("(?i)\\s+(feat\\.|featuring|with|x)\\s+.*$", "");
@@ -501,6 +511,13 @@ public class DiscogsService {
         if (t == null) return null;
         // Entferne Suffixe wie "- Remaster", "- Deluxe", etc.
         return t.replaceAll("\\s*-\\s*(?i)(Remaster(ed)?|Deluxe|Expanded|Anniversary|Edition|Remix|Reissue).*$", "");
+    }
+
+    private static String removeBracketedContent(String t) {
+        if (t == null) return null;
+        return t.replaceAll("\\s*\\([^)]*\\)", "")
+                .replaceAll("\\s*\\[[^]]*\\]", "")
+                .replaceAll("\\s*\\{[^}]*\\}", "");
     }
 
     private static String removeParenthesesContent(String t) {

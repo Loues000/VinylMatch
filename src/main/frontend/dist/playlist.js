@@ -4,6 +4,7 @@ const VIEW_MODE_KEY = "vm:playlistViewMode";
 const DEFAULT_VIEW_MODE = "list";
 const DEFAULT_PAGE_SIZE = 20;
 const DISCOGS_BATCH_SIZE = 5;
+const DISCOGS_BATCH_DELAY_MS = 175;
 
 const discogsState = {
     queue: [],
@@ -38,6 +39,36 @@ function normalizeKeyPart(value) {
     return value.toString().trim().toLowerCase();
 }
 
+function stripBracketedContent(value) {
+    if (!value)
+        return "";
+    return value
+        .replace(/\s*\([^)]*\)/g, "")
+        .replace(/\s*\[[^\]]*\]/g, "")
+        .replace(/\s*\{[^}]*\}/g, "")
+        .trim();
+}
+
+function removeMarketingSuffix(value) {
+    if (!value)
+        return "";
+    return value.replace(/\s*-\s*(remaster(ed)?|deluxe|expanded|anniversary|edition|remix|reissue)\b.*$/i, "").trim();
+}
+
+function primaryArtist(artist) {
+    if (!artist)
+        return "";
+    const tokens = artist.split(/\s*(?:,|;|\/|&|\+|\band\b|\s+(?:feat\.?|featuring|ft\.?|with|x)\s+)\s*/i);
+    const candidate = tokens[0]?.trim();
+    return (candidate && candidate.length ? candidate : artist).trim();
+}
+
+function normalizeForSearch(value) {
+    if (!value)
+        return "";
+    return removeMarketingSuffix(stripBracketedContent(value.replace(/&/g, "and")));
+}
+
 function buildTrackKey(track, index) {
     if (!track) {
         return null;
@@ -48,9 +79,9 @@ function buildTrackKey(track, index) {
     const idx = typeof index === "number" ? `idx:${index}` : "idx:-1";
     return [
         idx,
-        normalizeKeyPart(track.artist),
-        normalizeKeyPart(track.album),
-        normalizeKeyPart(track.trackName),
+        normalizeKeyPart(primaryArtist(track.artist)),
+        normalizeKeyPart(normalizeForSearch(track.album)),
+        normalizeKeyPart(normalizeForSearch(track.trackName)),
         track.releaseYear ?? "",
     ].join("|");
 }
@@ -131,16 +162,15 @@ async function processDiscogsQueue() {
                 tracks: batch.map((item) => ({
                     key: item.key,
                     index: item.index,
-                    artist: item.track?.artist ?? null,
-                    album: item.track?.album ?? null,
+                    artist: primaryArtist(item.track?.artist) || null,
+                    album: normalizeForSearch(item.track?.album) || null,
                     releaseYear: item.track?.releaseYear ?? null,
-                    track: item.track?.trackName ?? null,
+                    track: normalizeForSearch(item.track?.trackName) || null,
                     barcode: item.track?.barcode ?? null,
                 })),
             };
-            let response;
             try {
-                response = await fetch("/api/discogs/batch", {
+                const response = await fetch("/api/discogs/batch", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload),
@@ -162,6 +192,9 @@ async function processDiscogsQueue() {
                         discogsState.requested.delete(item.key);
                     }
                 }
+            }
+            if (discogsState.queue.length) {
+                await new Promise((resolve) => setTimeout(resolve, DISCOGS_BATCH_DELAY_MS));
             }
         }
     }
@@ -196,7 +229,7 @@ function queueDiscogsLookups(startIndex, tracks) {
         discogsState.requested.add(key);
         discogsState.queue.push({ key, index, track });
     }
-    processDiscogsQueue();
+    return processDiscogsQueue();
 }
 
 function markDiscogsResult(key, index, url) {
@@ -283,33 +316,37 @@ function createQualityBadge(quality) {
     return badge;
 }
 function buildVendorLinks(track) {
-    const quoted = (s) => `"${s}"`;
-    const terms = [];
-    const primaryArtist = (artist) => artist.split(/\s*(?:,|;|\/|&|\s+(?:feat\.?|featuring|ft\.?|x)\s+)\s*/i)[0]?.trim() || artist;
-    if (track.artist)
-        terms.push(quoted(primaryArtist(track.artist)));
-    if (track.album)
-        terms.push(quoted(track.album));
-    if (track.releaseYear)
-        terms.push(String(track.releaseYear));
-    const strictTokens = [
-        "(lp OR vinyl OR schallplatte)"
-    ];
-    const qBase = encodeURIComponent([...terms, ...strictTokens].join(" "));
+    const artist = primaryArtist(track.artist);
+    const album = normalizeForSearch(track.album);
+    const queryParts = [artist, album].filter(Boolean);
+    if (track.releaseYear) {
+        queryParts.push(String(track.releaseYear));
+    }
+    const query = queryParts.join(" ").trim();
+    const encoded = query ? encodeURIComponent(query) : null;
     const vendors = [
-        { label: "H", title: "HHV", href: `https://duckduckgo.com/?q=!ducky%20site:hhv.de%20${qBase}` },
-        { label: "J", title: "JPC", href: `https://duckduckgo.com/?q=!ducky%20site:jpc.de%20${qBase}` },
-        { label: "A", title: "Amazon", href: `https://duckduckgo.com/?q=!ducky%20site:amazon.de%20${qBase}` },
+        { label: "H", title: "HHV", href: encoded ? `https://www.hhv.de/shop/en/search?q=${encoded}` : null },
+        { label: "J", title: "JPC", href: encoded ? `https://www.jpc.de/s/${encoded}` : null },
+        { label: "A", title: "Amazon", href: encoded ? `https://www.amazon.de/s?k=${encoded}+vinyl` : null },
     ];
     return vendors.map((v) => {
         const b = document.createElement("a");
         b.textContent = v.label;
         b.title = v.title;
         b.setAttribute("aria-label", v.title);
-        b.href = v.href;
-        b.target = "_blank";
-        b.rel = "noopener noreferrer";
         b.classList.add("vendor-link");
+        if (v.href) {
+            b.href = v.href;
+            b.target = "_blank";
+            b.rel = "noopener noreferrer";
+            b.classList.remove("inactive");
+            b.setAttribute("aria-disabled", "false");
+        }
+        else {
+            b.href = "#";
+            b.classList.add("inactive");
+            b.setAttribute("aria-disabled", "true");
+        }
         return b;
     });
 }
@@ -376,6 +413,16 @@ function createTrackElement(track, index) {
     discogsBtn.href = "#";
     discogsBtn.classList.add("discogs-action");
     actions.appendChild(discogsBtn);
+    const vendorLinks = buildVendorLinks(track);
+    for (const link of vendorLinks) {
+        if (link.getAttribute("aria-disabled") === "true") {
+            link.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+            });
+        }
+        actions.appendChild(link);
+    }
     const updateBadge = (quality) => {
         qualityBadge.textContent = quality.label;
         qualityBadge.className = `match-quality match-quality--${quality.level}`;
@@ -383,7 +430,6 @@ function createTrackElement(track, index) {
     };
     const setDiscogsState = (state, url) => {
         trackDiv.dataset.discogsState = state;
-        actions.querySelectorAll(".vendor-link").forEach((el) => el.remove());
         if (state === "found" && url) {
             const quality = determineMatchQuality(url);
             updateBadge(quality);
@@ -395,11 +441,6 @@ function createTrackElement(track, index) {
             discogsBtn.target = "_blank";
             discogsBtn.rel = "noopener noreferrer";
             discogsBtn.title = quality.level === "good" ? "Auf Discogs ansehen" : "Discogs-Suchergebnis";
-            if (quality.level === "good") {
-                for (const link of buildVendorLinks(track)) {
-                    actions.appendChild(link);
-                }
-            }
         }
         else if (state === "pending") {
             updateBadge({ level: "pending", label: "Wird gesucht…" });
@@ -445,10 +486,10 @@ function createTrackElement(track, index) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    artist: track.artist,
-                    album: track.album,
+                    artist: primaryArtist(track.artist) || track.artist,
+                    album: normalizeForSearch(track.album) || track.album,
                     releaseYear: track.releaseYear ?? null,
-                    track: track.trackName,
+                    track: normalizeForSearch(track.trackName) || track.trackName,
                 }),
             });
             if (!res.ok)
@@ -581,7 +622,7 @@ async function fetchPlaylistChunk(id, offset, limit, { reset } = { reset: false 
     const loadedOffset = typeof payload?.offset === "number" ? payload.offset : offset;
     const loadedTracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
     if (loadedTracks.length) {
-        queueDiscogsLookups(loadedOffset, loadedTracks);
+        await queueDiscogsLookups(loadedOffset, loadedTracks);
     }
 }
 async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
@@ -615,7 +656,7 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
         renderTracks(state.aggregated, { reset: true });
         updateLoadMore(state.aggregated);
         if (Array.isArray(state.aggregated?.tracks) && state.aggregated.tracks.length) {
-            queueDiscogsLookups(0, state.aggregated.tracks);
+            await queueDiscogsLookups(0, state.aggregated.tracks);
         }
     }
     else {
@@ -633,9 +674,11 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
     }
     const btn = document.getElementById("load-more");
     if (btn) {
+        let loadMoreInFlight = false;
         btn.addEventListener("click", async () => {
-            if (!state.aggregated?.hasMore)
+            if (!state.aggregated?.hasMore || loadMoreInFlight)
                 return;
+            loadMoreInFlight = true;
             const offset = typeof state.aggregated.nextOffset === "number"
                 ? state.aggregated.nextOffset
                 : state.aggregated.tracks?.length ?? 0;
@@ -651,6 +694,7 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
             finally {
                 btn.disabled = false;
                 btn.textContent = originalText;
+                loadMoreInFlight = false;
             }
         }, { once: false });
     }
