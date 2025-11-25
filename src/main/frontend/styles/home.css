@@ -31,6 +31,7 @@ body {
 .sidebar-toggle {
     display: none;
     align-items: center;
+    width: 145px;
     gap: 10px;
     padding: 10px 18px;
     border-radius: 999px;
@@ -66,6 +67,7 @@ body {
     grid-template-columns: 360px minmax(0, 1fr);
     gap: 36px;
     align-items: flex-start;
+    justify-items: end;
     position: relative;
 }
 
@@ -77,7 +79,7 @@ body {
     gap: 16px;
     position: sticky;
     top: 96px;
-    align-self: flex-start;
+    align-items: flex-start;
 }
 
 .sidebar h3 {
@@ -124,6 +126,8 @@ body {
 
 .sidebar-panel {
     background: #fff;
+    min-width: 250px;
+    max-width: 250px;
     border-radius: var(--radius);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     padding: 16px;
@@ -330,10 +334,11 @@ textarea#playlist-url:focus {
 
 .user-controls {
     display: flex;
-    gap: 12px;
-    align-items: center;
+    gap: 6px;
+    align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: 12px;
+    margin-bottom: 0;
+    flex-direction: column;
 }
 
 .user-controls.hidden {
@@ -350,7 +355,7 @@ textarea#playlist-url:focus {
 }
 
 .user-search input {
-    width: 160px;
+    width: 250px;
     padding: 8px 10px;
     border-radius: 8px;
     border: 1px solid #d3dae2;
@@ -383,6 +388,10 @@ textarea#playlist-url:focus {
 
 .user-pagination.hidden {
     display: none;
+}
+
+#user-page-info {
+    align-items: center;
 }
 
 .pager-btn {
