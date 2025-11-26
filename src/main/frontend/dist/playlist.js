@@ -69,42 +69,6 @@ function normalizeForSearch(value) {
     return removeMarketingSuffix(stripBracketedContent(value.replace(/&/g, "and")));
 }
 
-function buildVendorQueries(track) {
-    const queries = [];
-    const barcode = typeof (track?.barcode) === "string" ? track.barcode.replace(/\D+/g, "").trim() : "";
-    if (barcode.length >= 8) {
-        queries.push(barcode);
-    }
-    const artist = primaryArtist(track?.artist);
-    const album = normalizeForSearch(track?.album);
-    const releaseYear = typeof track?.releaseYear === "number" ? String(track.releaseYear) : "";
-    const albumBase = [artist, album].filter(Boolean).join(" ").trim();
-    const albumWithYear = albumBase && releaseYear ? `${albumBase} ${releaseYear}`.trim() : albumBase;
-    const candidates = [
-        albumWithYear ? `${albumWithYear} vinyl` : "",
-        albumWithYear ? `${albumWithYear} lp` : "",
-        albumBase ? `${albumBase} vinyl` : "",
-        albumWithYear,
-        albumBase,
-    ];
-    for (const candidate of candidates) {
-        if (candidate?.trim()) {
-            queries.push(candidate.trim());
-        }
-    }
-    const trackName = normalizeForSearch(track?.trackName);
-    const trackParts = [artist, trackName];
-    if (releaseYear) {
-        trackParts.push(releaseYear);
-    }
-    const trackQuery = trackParts.filter(Boolean).join(" ").trim();
-    if (trackQuery && trackQuery !== albumBase && trackQuery !== albumWithYear) {
-        queries.push(`${trackQuery} vinyl`);
-        queries.push(`${trackQuery} lp`);
-    }
-    return Array.from(new Set(queries)).filter(Boolean);
-}
-
 function buildTrackKey(track, index) {
     if (!track) {
         return null;
@@ -352,49 +316,27 @@ function createQualityBadge(quality) {
     return badge;
 }
 function buildVendorLinks(track) {
-    const queries = buildVendorQueries(track);
+    const artist = primaryArtist(track.artist);
+    const album = normalizeForSearch(track.album);
+    const queryParts = [artist, album].filter(Boolean);
+    if (track.releaseYear) {
+        queryParts.push(String(track.releaseYear));
+    }
+    const query = queryParts.join(" ").trim();
+    const encoded = query ? encodeURIComponent(query) : null;
     const vendors = [
-        {
-            label: "H",
-            title: "HHV",
-            buildHref: (query, encoded) => {
-                const numericQuery = query.replace(/\D+/g, "");
-                if (numericQuery.length >= 8) {
-                    return `https://www.hhv.de/shop/en/search?term=${encoded}`;
-                }
-                return `https://www.hhv.de/shop/en/search?q=${encoded}`;
-            },
-        },
-        {
-            label: "J",
-            title: "JPC",
-            buildHref: (_query, encoded) => `https://www.jpc.de/s/${encoded}`,
-        },
-        {
-            label: "A",
-            title: "Amazon",
-            buildHref: (query) => {
-                const normalized = query.toLowerCase();
-                const finalQuery = normalized.includes("vinyl") ? query : `${query} vinyl`;
-                return `https://www.amazon.de/s?k=${encodeURIComponent(finalQuery)}`;
-            },
-        },
+        { label: "H", title: "HHV", href: encoded ? `https://www.hhv.de/shop/en/search?q=${encoded}` : null },
+        { label: "J", title: "JPC", href: encoded ? `https://www.jpc.de/s/${encoded}` : null },
+        { label: "A", title: "Amazon", href: encoded ? `https://www.amazon.de/s?k=${encoded}+vinyl` : null },
     ];
     return vendors.map((v) => {
-        const href = queries.reduce((current, query) => {
-            if (current) {
-                return current;
-            }
-            const encoded = encodeURIComponent(query);
-            return v.buildHref ? v.buildHref(query, encoded) : null;
-        }, null);
         const b = document.createElement("a");
         b.textContent = v.label;
         b.title = v.title;
         b.setAttribute("aria-label", v.title);
         b.classList.add("vendor-link");
-        if (href) {
-            b.href = href;
+        if (v.href) {
+            b.href = v.href;
             b.target = "_blank";
             b.rel = "noopener noreferrer";
             b.classList.remove("inactive");
