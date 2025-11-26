@@ -13,6 +13,16 @@ const discogsState = {
     processing: false,
 };
 
+const discogsUiState = {
+    loggedIn: false,
+    username: null,
+    name: null,
+    wishlist: [],
+    statuses: new Map(),
+};
+
+let libraryRefreshTimer = null;
+
 const trackRegistry = new Map();
 function getStoredViewMode() {
     try {
@@ -111,6 +121,243 @@ function resetDiscogsState() {
     discogsState.processing = false;
 }
 
+function scheduleLibraryRefresh(delay = 300) {
+    if (libraryRefreshTimer) {
+        clearTimeout(libraryRefreshTimer);
+    }
+    libraryRefreshTimer = window.setTimeout(() => refreshLibraryStatuses().catch(() => {}), delay);
+}
+
+function updateDiscogsChip(text, online) {
+    const chip = document.getElementById("discogs-status");
+    if (!chip)
+        return;
+    chip.textContent = text;
+    chip.classList.toggle("offline", !online);
+}
+
+function renderWishlistGrid(entries, total) {
+    const grid = document.getElementById("discogs-wishlist-grid");
+    const empty = document.getElementById("discogs-wishlist-empty");
+    const count = document.getElementById("discogs-wishlist-count");
+    if (!grid || !empty || !count)
+        return;
+    grid.textContent = "";
+    if (!entries.length) {
+        empty.classList.remove("hidden");
+        count.textContent = "";
+        return;
+    }
+    empty.classList.add("hidden");
+    count.textContent = total ? `${Math.min(entries.length, total)} von ${total}` : `${entries.length} Einträge`;
+    for (const item of entries) {
+        const card = document.createElement("article");
+        card.className = "discogs-wishlist__item";
+        if (item.thumb) {
+            const img = document.createElement("img");
+            img.src = item.thumb;
+            img.alt = item.title || "Discogs Release";
+            card.appendChild(img);
+        }
+        const title = document.createElement("h5");
+        title.textContent = item.title || "Release";
+        card.appendChild(title);
+        const meta = document.createElement("div");
+        meta.className = "discogs-wishlist__meta";
+        const artist = document.createElement("span");
+        artist.textContent = item.artist || "Unbekannt";
+        meta.appendChild(artist);
+        if (item.year) {
+            const year = document.createElement("span");
+            year.textContent = String(item.year);
+            meta.appendChild(year);
+        }
+        card.appendChild(meta);
+        if (item.url) {
+            const link = document.createElement("a");
+            link.href = item.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = "Auf Discogs öffnen";
+            card.appendChild(link);
+        }
+        grid.appendChild(card);
+    }
+}
+
+async function refreshDiscogsStatus() {
+    try {
+        const res = await fetch("/api/discogs/status", { cache: "no-cache" });
+        if (!res.ok)
+            throw new Error("HTTP " + res.status);
+        const payload = await res.json();
+        discogsUiState.loggedIn = !!payload?.loggedIn;
+        discogsUiState.username = payload?.username || null;
+        discogsUiState.name = payload?.name || null;
+    }
+    catch (e) {
+        discogsUiState.loggedIn = false;
+        discogsUiState.username = null;
+    }
+    finally {
+        applyDiscogsUi();
+    }
+}
+
+function applyDiscogsUi() {
+    const login = document.getElementById("discogs-login");
+    const dashboard = document.getElementById("discogs-dashboard");
+    const user = document.getElementById("discogs-user");
+    if (!login || !dashboard)
+        return;
+    if (discogsUiState.loggedIn) {
+        login.classList.add("hidden");
+        dashboard.classList.remove("hidden");
+        updateDiscogsChip("Verbunden", true);
+        if (user) {
+            user.textContent = discogsUiState.name || discogsUiState.username || "Discogs";
+        }
+    }
+    else {
+        login.classList.remove("hidden");
+        dashboard.classList.add("hidden");
+        updateDiscogsChip("Nicht verbunden", false);
+    }
+}
+
+async function refreshWishlistPreview() {
+    if (!discogsUiState.loggedIn) {
+        renderWishlistGrid([], 0);
+        return;
+    }
+    try {
+        const res = await fetch("/api/discogs/wishlist?limit=12", { cache: "no-cache" });
+        if (!res.ok)
+            throw new Error("HTTP " + res.status);
+        const payload = await res.json();
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+        discogsUiState.wishlist = items;
+        renderWishlistGrid(items, payload?.total ?? items.length);
+    }
+    catch (e) {
+        console.warn("Wunschliste konnte nicht geladen werden", e);
+    }
+}
+
+async function connectDiscogs() {
+    const input = document.getElementById("discogs-token");
+    if (!(input instanceof HTMLInputElement))
+        return;
+    const token = input.value.trim();
+    if (!token)
+        return;
+    try {
+        const res = await fetch("/api/discogs/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+        });
+        if (!res.ok)
+            throw new Error("HTTP " + res.status);
+        await refreshDiscogsStatus();
+        await refreshWishlistPreview();
+        scheduleLibraryRefresh(200);
+    }
+    catch (e) {
+        alert("Discogs-Login fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)));
+    }
+}
+
+async function disconnectDiscogs() {
+    try {
+        await fetch("/api/discogs/logout", { method: "POST" });
+    }
+    catch (_) { }
+    discogsUiState.loggedIn = false;
+    discogsUiState.username = null;
+    discogsUiState.name = null;
+    discogsUiState.wishlist = [];
+    applyDiscogsUi();
+    renderWishlistGrid([], 0);
+    refreshLibraryBadgesLocally(null);
+}
+
+async function refreshLibraryStatuses() {
+    if (!discogsUiState.loggedIn || !Array.isArray(state.aggregated?.tracks)) {
+        return;
+    }
+    const urls = state.aggregated.tracks
+        .map((track) => track?.discogsAlbumUrl)
+        .filter((url) => typeof url === "string" && url);
+    if (!urls.length) {
+        refreshLibraryBadgesLocally(null);
+        return;
+    }
+    const uniqueUrls = Array.from(new Set(urls)).slice(0, 120);
+    try {
+        const res = await fetch("/api/discogs/library-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urls: uniqueUrls }),
+        });
+        if (!res.ok)
+            throw new Error("HTTP " + res.status);
+        const payload = await res.json();
+        const results = Array.isArray(payload?.results) ? payload.results : [];
+        const flagMap = new Map();
+        for (const item of results) {
+            if (!item || typeof item.url !== "string")
+                continue;
+            flagMap.set(item.url, {
+                inWishlist: !!item.inWishlist,
+                inCollection: !!item.inCollection,
+            });
+        }
+        refreshLibraryBadgesLocally(flagMap);
+    }
+    catch (e) {
+        console.warn("Konnte Discogs-Status nicht abrufen", e);
+    }
+}
+
+function refreshLibraryBadgesLocally(flagMap) {
+    if (!Array.isArray(state.aggregated?.tracks)) {
+        return;
+    }
+    for (let i = 0; i < state.aggregated.tracks.length; i++) {
+        const track = state.aggregated.tracks[i];
+        if (!track || !track.discogsAlbumUrl)
+            continue;
+        const key = buildTrackKey(track, i);
+        const entry = getRegistryEntry(key);
+        if (!entry?.setLibraryState)
+            continue;
+        const flags = flagMap?.get(track.discogsAlbumUrl);
+        if (flags?.inCollection) {
+            entry.setLibraryState("owned");
+        }
+        else if (flags?.inWishlist) {
+            entry.setLibraryState("wishlist");
+        }
+        else {
+            entry.setLibraryState(null);
+        }
+    }
+}
+
+function setupDiscogsPanel() {
+    const connectBtn = document.getElementById("discogs-connect");
+    const refreshBtn = document.getElementById("discogs-refresh");
+    const disconnectBtn = document.getElementById("discogs-disconnect");
+    connectBtn?.addEventListener("click", () => connectDiscogs());
+    refreshBtn?.addEventListener("click", () => {
+        refreshWishlistPreview();
+        scheduleLibraryRefresh(100);
+    });
+    disconnectBtn?.addEventListener("click", () => disconnectDiscogs());
+    refreshDiscogsStatus().then(() => refreshWishlistPreview()).then(() => scheduleLibraryRefresh(200));
+}
+
 function applyDiscogsResult(result) {
     if (!result)
         return;
@@ -134,6 +381,9 @@ function applyDiscogsResult(result) {
         : undefined);
     if (targetEntry?.setDiscogsState) {
         targetEntry.setDiscogsState(url ? "found" : "not-found", url ?? undefined);
+    }
+    if (url) {
+        scheduleLibraryRefresh(200);
     }
 }
 
@@ -395,6 +645,9 @@ function createTrackElement(track, index) {
     metaRow.className = "meta-row";
     const qualityBadge = createQualityBadge(initialQuality);
     metaRow.appendChild(qualityBadge);
+    const libraryBadge = document.createElement("span");
+    libraryBadge.className = "discogs-library hidden";
+    metaRow.appendChild(libraryBadge);
     if (typeof track.releaseYear === "number") {
         const year = document.createElement("span");
         year.className = "release-year";
@@ -413,6 +666,12 @@ function createTrackElement(track, index) {
     discogsBtn.href = "#";
     discogsBtn.classList.add("discogs-action");
     actions.appendChild(discogsBtn);
+    const wishlistBtn = document.createElement("a");
+    wishlistBtn.textContent = "❤";
+    wishlistBtn.setAttribute("aria-label", "Zur Discogs-Wunschliste hinzufügen");
+    wishlistBtn.href = "#";
+    wishlistBtn.classList.add("discogs-action");
+    actions.appendChild(wishlistBtn);
     const vendorLinks = buildVendorLinks(track);
     for (const link of vendorLinks) {
         if (link.getAttribute("aria-disabled") === "true") {
@@ -464,8 +723,20 @@ function createTrackElement(track, index) {
             discogsBtn.removeAttribute("rel");
             discogsBtn.title = "Erneut nach Discogs suchen";
         }
+        wishlistBtn.setAttribute("aria-disabled", state !== "found" ? "true" : "false");
+        wishlistBtn.classList.toggle("inactive", state !== "found");
     };
-    registerTrackElement(key, { index, setDiscogsState, element: trackDiv });
+    const setLibraryState = (state) => {
+        if (!state) {
+            libraryBadge.className = "discogs-library hidden";
+            libraryBadge.textContent = "";
+            return;
+        }
+        libraryBadge.className = `discogs-library ${state}`;
+        libraryBadge.textContent = state === "owned" ? "In Sammlung" : "Auf Wunschliste";
+    };
+    registerTrackElement(key, { index, setDiscogsState, setLibraryState, element: trackDiv });
+    setLibraryState(null);
     let manualSearching = false;
     discogsBtn.addEventListener("click", async (ev) => {
         if (discogsBtn.getAttribute("aria-disabled") === "true") {
@@ -511,6 +782,40 @@ function createTrackElement(track, index) {
                 setDiscogsState("not-found");
             }
             manualSearching = false;
+        }
+    });
+    wishlistBtn.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        if (wishlistBtn.getAttribute("aria-disabled") === "true") {
+            return;
+        }
+        if (!discogsUiState.loggedIn) {
+            alert("Bitte verbinde zuerst deinen Discogs-Account.");
+            return;
+        }
+        const targetUrl = track.discogsAlbumUrl;
+        if (!targetUrl) {
+            return;
+        }
+        wishlistBtn.setAttribute("aria-disabled", "true");
+        wishlistBtn.classList.add("inactive");
+        try {
+            const res = await fetch("/api/discogs/wishlist/add", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url: targetUrl }),
+            });
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            scheduleLibraryRefresh(150);
+        }
+        catch (e) {
+            alert("Konnte nicht zur Wunschliste hinzufügen: " + (e instanceof Error ? e.message : String(e)));
+        }
+        finally {
+            wishlistBtn.setAttribute("aria-disabled", track.discogsAlbumUrl ? "false" : "true");
+            wishlistBtn.classList.toggle("inactive", !track.discogsAlbumUrl);
         }
     });
     trackDiv.appendChild(img);
@@ -633,6 +938,7 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
         return;
     }
     initViewToggle();
+    setupDiscogsPanel();
     applyViewMode(state.viewMode, { rerender: false });
     state = {
         id: id || null,

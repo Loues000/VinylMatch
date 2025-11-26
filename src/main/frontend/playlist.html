@@ -29,6 +29,50 @@
         </div>
     </div>
 
+    <section class="discogs-panel" aria-labelledby="discogs-heading">
+        <div class="discogs-card">
+            <div class="discogs-card__header">
+                <div>
+                    <p class="eyebrow">Discogs</p>
+                    <h2 id="discogs-heading">Wunschliste &amp; Sammlung</h2>
+                    <p class="muted">Verbinde deinen Discogs-Account mit deinem persönlichen User-Token, um zu sehen, welche Playlist-Alben du bereits besitzt oder direkt auf die Wunschliste setzen möchtest.</p>
+                </div>
+                <div class="discogs-chip" id="discogs-status">Nicht verbunden</div>
+            </div>
+
+            <div class="discogs-login" id="discogs-login">
+                <label for="discogs-token">Discogs User-Token</label>
+                <div class="discogs-login__row">
+                    <input id="discogs-token" type="password" placeholder="z. B. DjYtMa..." autocomplete="off" />
+                    <button type="button" class="btn" id="discogs-connect">Verbinden</button>
+                </div>
+                <p class="hint">Den Token findest du in deinen Discogs-Einstellungen unter &quot;Developer&quot;. Dein Token bleibt nur lokal in dieser Sitzung.</p>
+            </div>
+
+            <div class="discogs-dashboard hidden" id="discogs-dashboard">
+                <div class="discogs-summary">
+                    <div>
+                        <p class="eyebrow">Verbunden als</p>
+                        <h3 id="discogs-user"></h3>
+                    </div>
+                    <div class="discogs-actions">
+                        <button type="button" class="btn ghost" id="discogs-refresh">Aktualisieren</button>
+                        <button type="button" class="btn danger" id="discogs-disconnect">Trennen</button>
+                    </div>
+                </div>
+
+                <div class="discogs-wishlist">
+                    <div class="discogs-wishlist__header">
+                        <h4>Deine Wunschliste</h4>
+                        <p class="muted" id="discogs-wishlist-count"></p>
+                    </div>
+                    <div class="discogs-wishlist__grid" id="discogs-wishlist-grid"></div>
+                    <p class="muted" id="discogs-wishlist-empty">Noch keine Wunschliste geladen.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <div id="playlist" class="playlist-tracks" aria-live="polite">Loading...</div>
 
     <div class="load-more-wrapper hidden" id="load-more-wrapper">

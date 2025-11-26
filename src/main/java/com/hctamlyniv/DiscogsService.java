@@ -15,11 +15,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.text.Normalizer;
@@ -48,6 +52,14 @@ public class DiscogsService {
     private final Map<String, String> cache = new ConcurrentHashMap<>();
     private final Map<String, String> barcodeCache = new ConcurrentHashMap<>();
     private final ReentrantLock persistenceLock = new ReentrantLock();
+
+    public record DiscogsProfile(String username, String name) {}
+
+    public record WishlistEntry(String title, String artist, Integer year, String thumb, String url, Integer releaseId) {}
+
+    public record WishlistResult(List<WishlistEntry> items, int total) {}
+
+    public record LibraryFlags(boolean inWishlist, boolean inCollection) {}
 
     public DiscogsService(String token, String userAgent) {
         this.token = token;
@@ -223,6 +235,154 @@ public class DiscogsService {
         }
     }
 
+    public Optional<DiscogsProfile> fetchProfile() {
+        if (token == null || token.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(API_BASE + "/oauth/identity"))
+                    .timeout(Duration.ofSeconds(8))
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                return Optional.empty();
+            }
+            JsonNode root = mapper.readTree(resp.body());
+            String username = root.path("username").asText(null);
+            String name = root.path("name").asText(null);
+            if (username == null || username.isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(new DiscogsProfile(username, name));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    public WishlistResult fetchWishlist(String username, int page, int perPage) {
+        List<WishlistEntry> entries = new ArrayList<>();
+        if (token == null || token.isBlank() || username == null || username.isBlank()) {
+            return new WishlistResult(entries, 0);
+        }
+        try {
+            String qs = "?sort=added&sort_order=desc&page=" + Math.max(1, page) + "&per_page=" + Math.max(1, Math.min(perPage, 50));
+            URI uri = URI.create(API_BASE + "/users/" + url(username) + "/wants" + qs);
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(12))
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                return new WishlistResult(entries, 0);
+            }
+            JsonNode root = mapper.readTree(resp.body());
+            int total = root.path("pagination").path("items").asInt(0);
+            JsonNode wants = root.get("wants");
+            if (wants != null && wants.isArray()) {
+                for (JsonNode item : wants) {
+                    JsonNode basic = item.get("basic_information");
+                    if (basic == null) continue;
+                    String title = basic.path("title").asText(null);
+                    String artist = null;
+                    JsonNode artists = basic.get("artists");
+                    if (artists != null && artists.isArray() && artists.size() > 0) {
+                        artist = artists.get(0).path("name").asText(null);
+                    }
+                    Integer year = basic.hasNonNull("year") ? basic.get("year").asInt() : null;
+                    String thumb = basic.path("thumb").asText(null);
+                    String uriStr = basic.path("resource_url").asText(null);
+                    String webUrl = basic.path("uri").asText(null);
+                    Integer releaseId = basic.hasNonNull("id") ? basic.get("id").asInt() : null;
+                    String targetUrl = (webUrl != null && !webUrl.isBlank()) ? webUrl : uriStr;
+                    if (targetUrl != null && targetUrl.startsWith("/")) {
+                        targetUrl = "https://www.discogs.com" + targetUrl;
+                    }
+                    entries.add(new WishlistEntry(title, artist, year, thumb, targetUrl, releaseId));
+                }
+            }
+            return new WishlistResult(entries, total);
+        } catch (Exception e) {
+            return new WishlistResult(entries, 0);
+        }
+    }
+
+    public Map<Integer, LibraryFlags> lookupLibraryFlags(String username, Set<Integer> releaseIds) {
+        Map<Integer, LibraryFlags> result = new HashMap<>();
+        if (releaseIds == null || releaseIds.isEmpty()) {
+            return result;
+        }
+        Set<Integer> wishlistIds = fetchWishlistReleaseIds(username, 100);
+        Set<Integer> collectionIds = fetchCollectionReleaseIds(username, 100);
+        for (Integer id : releaseIds) {
+            if (id == null) continue;
+            boolean inWishlist = wishlistIds.contains(id);
+            boolean inCollection = collectionIds.contains(id);
+            result.put(id, new LibraryFlags(inWishlist, inCollection));
+        }
+        return result;
+    }
+
+    public Optional<Integer> resolveReleaseIdFromUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return Optional.empty();
+        }
+        String lower = url.toLowerCase();
+        try {
+            if (lower.contains("/release/")) {
+                String[] tokens = lower.split("/release/");
+                if (tokens.length > 1) {
+                    String part = tokens[1].split("[^0-9]")[0];
+                    if (!part.isBlank()) {
+                        return Optional.of(Integer.parseInt(part));
+                    }
+                }
+            }
+            if (lower.contains("/master/")) {
+                String[] tokens = lower.split("/master/");
+                if (tokens.length > 1) {
+                    String part = tokens[1].split("[^0-9]")[0];
+                    if (!part.isBlank()) {
+                        int masterId = Integer.parseInt(part);
+                        Optional<Integer> mainRelease = fetchMainReleaseId(masterId);
+                        if (mainRelease.isPresent()) {
+                            return mainRelease;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return Optional.empty();
+    }
+
+    public boolean addToWantlist(String username, int releaseId) {
+        if (token == null || token.isBlank() || username == null || username.isBlank()) {
+            return false;
+        }
+        try {
+            String body = "release_id=" + releaseId + "&notes=" + url("Added via VinylMatch");
+            URI uri = URI.create(API_BASE + "/users/" + url(username) + "/wants");
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return resp.statusCode() >= 200 && resp.statusCode() < 300;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private Optional<String> searchByBarcode(String code) throws IOException, InterruptedException {
         StringBuilder qs = new StringBuilder();
         qs.append("barcode=").append(url(code));
@@ -256,6 +416,91 @@ public class DiscogsService {
             }
         }
         return Optional.empty();
+    }
+
+    private Optional<Integer> fetchMainReleaseId(int masterId) throws IOException, InterruptedException {
+        URI uri = URI.create(API_BASE + "/masters/" + masterId);
+        HttpRequest req = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(8))
+                .header("Accept", "application/json")
+                .header("User-Agent", userAgent)
+                .header("Authorization", "Discogs token=" + token)
+                .GET()
+                .build();
+        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if (resp.statusCode() != 200) {
+            return Optional.empty();
+        }
+        JsonNode root = mapper.readTree(resp.body());
+        if (root.hasNonNull("main_release")) {
+            return Optional.of(root.get("main_release").asInt());
+        }
+        return Optional.empty();
+    }
+
+    private Set<Integer> fetchWishlistReleaseIds(String username, int perPage) {
+        Set<Integer> ids = new HashSet<>();
+        if (token == null || token.isBlank() || username == null || username.isBlank()) {
+            return ids;
+        }
+        try {
+            String qs = "?sort=added&sort_order=desc&page=1&per_page=" + Math.max(1, Math.min(perPage, 100));
+            URI uri = URI.create(API_BASE + "/users/" + url(username) + "/wants" + qs);
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(12))
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                return ids;
+            }
+            JsonNode root = mapper.readTree(resp.body());
+            JsonNode wants = root.get("wants");
+            if (wants != null && wants.isArray()) {
+                for (JsonNode item : wants) {
+                    JsonNode basic = item.get("basic_information");
+                    if (basic != null && basic.hasNonNull("id")) {
+                        ids.add(basic.get("id").asInt());
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return ids;
+    }
+
+    private Set<Integer> fetchCollectionReleaseIds(String username, int perPage) {
+        Set<Integer> ids = new HashSet<>();
+        if (token == null || token.isBlank() || username == null || username.isBlank()) {
+            return ids;
+        }
+        try {
+            String qs = "?sort=added&sort_order=desc&page=1&per_page=" + Math.max(1, Math.min(perPage, 100));
+            URI uri = URI.create(API_BASE + "/users/" + url(username) + "/collection/folders/0/releases" + qs);
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(12))
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                return ids;
+            }
+            JsonNode root = mapper.readTree(resp.body());
+            JsonNode releases = root.get("releases");
+            if (releases != null && releases.isArray()) {
+                for (JsonNode item : releases) {
+                    if (item.hasNonNull("id")) {
+                        ids.add(item.get("id").asInt());
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return ids;
     }
 
     private Optional<String> searchOnce(String artist, String album, Integer year, String trackTitle, boolean master) throws IOException, InterruptedException {
