@@ -15,11 +15,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.text.Normalizer;
@@ -38,6 +42,7 @@ public class DiscogsService {
 
     private static final Path CACHE_DIR = Paths.get("cache", "discogs");
     private static final Path CACHE_FILE = CACHE_DIR.resolve("albums.json");
+    private static final Path CURATION_FILE = CACHE_DIR.resolve("curated-links.json");
 
     private final HttpClient http;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -47,7 +52,22 @@ public class DiscogsService {
     // Sehr einfacher In-Memory-Cache (Artist|Album|Year -> URI)
     private final Map<String, String> cache = new ConcurrentHashMap<>();
     private final Map<String, String> barcodeCache = new ConcurrentHashMap<>();
+    private final Map<String, CuratedLink> curatedLinks = new ConcurrentHashMap<>();
     private final ReentrantLock persistenceLock = new ReentrantLock();
+
+    public record DiscogsProfile(String username, String name) {}
+
+    public record WishlistEntry(String title, String artist, Integer year, String thumb, String url, Integer releaseId) {}
+
+    public record WishlistResult(List<WishlistEntry> items, int total) {}
+
+    public record LibraryFlags(boolean inWishlist, boolean inCollection) {}
+
+    public record CurationCandidate(Integer releaseId, String title, String artist, Integer year,
+                                    String country, String format, String thumb, String url) {}
+
+    public record CuratedLink(String cacheKey, String artist, String album, Integer year, String trackTitle,
+                               String barcode, String url, String thumb, String collectedAt, String source) {}
 
     public DiscogsService(String token, String userAgent) {
         this.token = token;
@@ -57,6 +77,7 @@ public class DiscogsService {
                 .build();
 
         loadPersistedCache();
+        loadCuratedLinks();
     }
 
     private void loadPersistedCache() {
@@ -90,6 +111,49 @@ public class DiscogsService {
         }
     }
 
+    private void loadCuratedLinks() {
+        try {
+            if (!Files.exists(CURATION_FILE)) {
+                return;
+            }
+            JsonNode root = mapper.readTree(CURATION_FILE.toFile());
+            JsonNode links = root.get("links");
+            if (links != null && links.isObject()) {
+                Iterator<Map.Entry<String, JsonNode>> fields = links.fields();
+                while (fields.hasNext()) {
+                    Map.Entry<String, JsonNode> entry = fields.next();
+                    JsonNode node = entry.getValue();
+                    if (node == null || node.isNull()) {
+                        continue;
+                    }
+                    String cacheKey = entry.getKey();
+                    String artist = optText(node, "artist");
+                    String album = optText(node, "album");
+                    Integer year = node.has("year") && node.get("year").isNumber() ? node.get("year").asInt() : null;
+                    String trackTitle = optText(node, "trackTitle");
+                    String barcode = optText(node, "barcode");
+                    String url = optText(node, "url");
+                    String thumb = optText(node, "thumb");
+                    String collectedAt = optText(node, "collectedAt");
+                    String source = optText(node, "source");
+                    if (url == null || url.isBlank()) {
+                        continue;
+                    }
+                    CuratedLink link = new CuratedLink(cacheKey, artist, album, year, trackTitle, barcode, url, thumb, collectedAt, source);
+                    curatedLinks.put(cacheKey, link);
+                    if (cacheKey != null) {
+                        cache.put(cacheKey, url);
+                    }
+                    if (barcode != null && !barcode.isBlank()) {
+                        barcodeCache.put(barcode, url);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("[Discogs] Konnte kuratierte Links nicht laden: " + e.getMessage());
+        }
+    }
+
     private void persistCache() {
         persistenceLock.lock();
         try {
@@ -107,20 +171,60 @@ public class DiscogsService {
     }
 
     private void rememberResult(String cacheKey, String url, String barcode) {
-        if (url == null || url.isBlank()) {
+        String safeUrl = sanitizeDiscogsWebUrl(url);
+        if (safeUrl == null) {
             return;
         }
         if (cacheKey != null && !cacheKey.isBlank()) {
-            cache.put(cacheKey, url);
+            cache.put(cacheKey, safeUrl);
         }
         if (barcode != null && !barcode.isBlank()) {
-            barcodeCache.put(barcode, url);
+            barcodeCache.put(barcode, safeUrl);
         }
         persistCache();
     }
 
+    private void persistCuratedLinks() {
+        persistenceLock.lock();
+        try {
+            Files.createDirectories(CACHE_DIR);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("updatedAt", Instant.now().toString());
+            payload.put("links", new HashMap<>(curatedLinks));
+            mapper.writerWithDefaultPrettyPrinter().writeValue(CURATION_FILE.toFile(), payload);
+        } catch (IOException e) {
+            System.err.println("[Discogs] Konnte kuratierte Links nicht speichern: " + e.getMessage());
+        } finally {
+            persistenceLock.unlock();
+        }
+    }
+
     private String buildCacheKey(String artist, String album, Integer releaseYear) {
         return (artist == null ? "" : artist) + "|" + (album == null ? "" : album) + "|" + (releaseYear == null ? "" : releaseYear);
+    }
+
+    private String sanitizeDiscogsWebUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(url.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || host == null) {
+                return null;
+            }
+            if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+                return null;
+            }
+            String lowerHost = host.toLowerCase();
+            if (!lowerHost.equals("discogs.com") && !lowerHost.endsWith(".discogs.com")) {
+                return null;
+            }
+            return uri.toString();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public Optional<String> peekCachedUri(String artist, String album, Integer releaseYear, String barcode) {
@@ -155,6 +259,10 @@ public class DiscogsService {
         final String origTrack = trackTitle == null ? null : trackTitle.trim();
         final Integer year = releaseYear;
         final String cacheKey = buildCacheKey(origArtist, origAlbum, year);
+        Optional<String> curated = findCuratedLink(cacheKey, barcode);
+        if (curated.isPresent()) {
+            return curated;
+        }
         if (barcode != null && !barcode.isBlank()) {
             String cachedBarcodeUrl = barcodeCache.get(barcode);
             if (cachedBarcodeUrl != null) {
@@ -223,6 +331,263 @@ public class DiscogsService {
         }
     }
 
+    private Optional<String> findCuratedLink(String cacheKey, String barcode) {
+        if (barcode != null && !barcode.isBlank()) {
+            String fromBarcode = barcodeCache.get(barcode);
+            if (fromBarcode != null) {
+                return Optional.of(fromBarcode);
+            }
+        }
+        CuratedLink link = curatedLinks.get(cacheKey);
+        if (link != null && link.url != null && !link.url.isBlank()) {
+            return Optional.of(link.url());
+        }
+        return Optional.empty();
+    }
+
+    public Optional<DiscogsProfile> fetchProfile() {
+        if (token == null || token.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(API_BASE + "/oauth/identity"))
+                    .timeout(Duration.ofSeconds(8))
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                return Optional.empty();
+            }
+            JsonNode root = mapper.readTree(resp.body());
+            String username = root.path("username").asText(null);
+            String name = root.path("name").asText(null);
+            if (username == null || username.isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(new DiscogsProfile(username, name));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    public List<CurationCandidate> fetchCurationCandidates(String artist, String album, Integer releaseYear, String trackTitle, int limit) throws IOException, InterruptedException {
+        if (token == null || token.isBlank()) {
+            return List.of();
+        }
+        int max = (limit <= 0 || limit > 10) ? 4 : limit;
+        StringBuilder qs = new StringBuilder("?");
+        if (artist != null && !artist.isBlank()) {
+            qs.append("artist=").append(url(artist)).append("&");
+        }
+        if (album != null && !album.isBlank()) {
+            qs.append("release_title=").append(url(album)).append("&");
+        }
+        if (trackTitle != null && !trackTitle.isBlank()) {
+            qs.append("track=").append(url(trackTitle)).append("&");
+        }
+        if (releaseYear != null) {
+            qs.append("year=").append(releaseYear).append("&");
+        }
+        qs.append("type=release&per_page=").append(max).append("&page=1");
+        URI uri = URI.create(API_BASE + "/database/search" + qs);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(uri)
+                .header("User-Agent", userAgent)
+                .header("Authorization", "Discogs token=" + token)
+                .GET()
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() / 100 != 2) {
+            return List.of();
+        }
+        JsonNode root = mapper.readTree(response.body());
+        JsonNode results = root.get("results");
+        if (results == null || !results.isArray()) {
+            return List.of();
+        }
+        List<CurationCandidate> candidates = new ArrayList<>();
+        for (JsonNode node : results) {
+            if (candidates.size() >= max) break;
+            Integer id = node.has("id") && node.get("id").isInt() ? node.get("id").asInt() : null;
+            String title = optText(node, "title");
+            String thumb = optText(node, "thumb");
+            Integer year = node.has("year") && node.get("year").isInt() ? node.get("year").asInt() : null;
+            String country = optText(node, "country");
+            String format = parseFormats(node.get("format"));
+            String uriSuffix = optText(node, "uri");
+            String url = uriSuffix != null ? sanitizeDiscogsWebUrl("https://www.discogs.com" + uriSuffix) : null;
+            String safeThumb = sanitizeDiscogsWebUrl(thumb);
+            if (url == null) {
+                continue;
+            }
+            String artistName = optText(node, "artist");
+            candidates.add(new CurationCandidate(id, title, artistName, year, country, format, safeThumb, url));
+        }
+        return candidates;
+    }
+
+    public CuratedLink saveCuratedLink(String artist, String album, Integer releaseYear, String trackTitle, String barcode, String url, String thumb) {
+        String safeUrl = sanitizeDiscogsWebUrl(url);
+        if (safeUrl == null) {
+            throw new IllegalArgumentException("Ungültige Discogs-URL");
+        }
+        String safeThumb = sanitizeDiscogsWebUrl(thumb);
+        String cacheKey = buildCacheKey(extractPrimaryArtist(artist), album == null ? null : album.trim(), releaseYear);
+        CuratedLink link = new CuratedLink(cacheKey, artist, album, releaseYear, trackTitle, barcode, safeUrl, safeThumb, Instant.now().toString(), "manual");
+        curatedLinks.put(cacheKey, link);
+        rememberResult(cacheKey, safeUrl, barcode);
+        persistCuratedLinks();
+        return link;
+    }
+
+    private String parseFormats(JsonNode formatsNode) {
+        if (formatsNode == null || !formatsNode.isArray()) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        for (JsonNode node : formatsNode) {
+            if (node != null && node.isTextual()) {
+                parts.add(node.asText());
+            }
+        }
+        return parts.isEmpty() ? null : String.join(" · ", parts);
+    }
+
+    private String optText(JsonNode node, String field) {
+        JsonNode v = node == null ? null : node.get(field);
+        if (v == null || v.isNull()) {
+            return null;
+        }
+        return v.asText();
+    }
+
+    public WishlistResult fetchWishlist(String username, int page, int perPage) {
+        List<WishlistEntry> entries = new ArrayList<>();
+        if (token == null || token.isBlank() || username == null || username.isBlank()) {
+            return new WishlistResult(entries, 0);
+        }
+        try {
+            String qs = "?sort=added&sort_order=desc&page=" + Math.max(1, page) + "&per_page=" + Math.max(1, Math.min(perPage, 50));
+            URI uri = URI.create(API_BASE + "/users/" + url(username) + "/wants" + qs);
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(12))
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                return new WishlistResult(entries, 0);
+            }
+            JsonNode root = mapper.readTree(resp.body());
+            int total = root.path("pagination").path("items").asInt(0);
+            JsonNode wants = root.get("wants");
+            if (wants != null && wants.isArray()) {
+                for (JsonNode item : wants) {
+                    JsonNode basic = item.get("basic_information");
+                    if (basic == null) continue;
+                    String title = basic.path("title").asText(null);
+                    String artist = null;
+                    JsonNode artists = basic.get("artists");
+                    if (artists != null && artists.isArray() && artists.size() > 0) {
+                        artist = artists.get(0).path("name").asText(null);
+                    }
+                    Integer year = basic.hasNonNull("year") ? basic.get("year").asInt() : null;
+                    String thumb = sanitizeDiscogsWebUrl(basic.path("thumb").asText(null));
+                    String uriStr = basic.path("resource_url").asText(null);
+                    String webUrl = basic.path("uri").asText(null);
+                    Integer releaseId = basic.hasNonNull("id") ? basic.get("id").asInt() : null;
+                    String targetUrl = (webUrl != null && !webUrl.isBlank()) ? webUrl : uriStr;
+                    if (targetUrl != null && targetUrl.startsWith("/")) {
+                        targetUrl = "https://www.discogs.com" + targetUrl;
+                    }
+                    String safeTarget = sanitizeDiscogsWebUrl(targetUrl);
+                    if (safeTarget != null) {
+                        entries.add(new WishlistEntry(title, artist, year, thumb, safeTarget, releaseId));
+                    }
+                }
+            }
+            return new WishlistResult(entries, total);
+        } catch (Exception e) {
+            return new WishlistResult(entries, 0);
+        }
+    }
+
+    public Map<Integer, LibraryFlags> lookupLibraryFlags(String username, Set<Integer> releaseIds) {
+        Map<Integer, LibraryFlags> result = new HashMap<>();
+        if (releaseIds == null || releaseIds.isEmpty()) {
+            return result;
+        }
+        Set<Integer> wishlistIds = fetchWishlistReleaseIds(username, 100);
+        Set<Integer> collectionIds = fetchCollectionReleaseIds(username, 100);
+        for (Integer id : releaseIds) {
+            if (id == null) continue;
+            boolean inWishlist = wishlistIds.contains(id);
+            boolean inCollection = collectionIds.contains(id);
+            result.put(id, new LibraryFlags(inWishlist, inCollection));
+        }
+        return result;
+    }
+
+    public Optional<Integer> resolveReleaseIdFromUrl(String url) {
+        String normalized = sanitizeDiscogsWebUrl(url);
+        if (normalized == null) {
+            return Optional.empty();
+        }
+        String lower = normalized.toLowerCase();
+        try {
+            if (lower.contains("/release/")) {
+                String[] tokens = lower.split("/release/");
+                if (tokens.length > 1) {
+                    String part = tokens[1].split("[^0-9]")[0];
+                    if (!part.isBlank()) {
+                        return Optional.of(Integer.parseInt(part));
+                    }
+                }
+            }
+            if (lower.contains("/master/")) {
+                String[] tokens = lower.split("/master/");
+                if (tokens.length > 1) {
+                    String part = tokens[1].split("[^0-9]")[0];
+                    if (!part.isBlank()) {
+                        int masterId = Integer.parseInt(part);
+                        Optional<Integer> mainRelease = fetchMainReleaseId(masterId);
+                        if (mainRelease.isPresent()) {
+                            return mainRelease;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return Optional.empty();
+    }
+
+    public boolean addToWantlist(String username, int releaseId) {
+        if (token == null || token.isBlank() || username == null || username.isBlank()) {
+            return false;
+        }
+        try {
+            String body = "release_id=" + releaseId + "&notes=" + url("Added via VinylMatch");
+            URI uri = URI.create(API_BASE + "/users/" + url(username) + "/wants");
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return resp.statusCode() >= 200 && resp.statusCode() < 300;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private Optional<String> searchByBarcode(String code) throws IOException, InterruptedException {
         StringBuilder qs = new StringBuilder();
         qs.append("barcode=").append(url(code));
@@ -256,6 +621,91 @@ public class DiscogsService {
             }
         }
         return Optional.empty();
+    }
+
+    private Optional<Integer> fetchMainReleaseId(int masterId) throws IOException, InterruptedException {
+        URI uri = URI.create(API_BASE + "/masters/" + masterId);
+        HttpRequest req = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(8))
+                .header("Accept", "application/json")
+                .header("User-Agent", userAgent)
+                .header("Authorization", "Discogs token=" + token)
+                .GET()
+                .build();
+        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if (resp.statusCode() != 200) {
+            return Optional.empty();
+        }
+        JsonNode root = mapper.readTree(resp.body());
+        if (root.hasNonNull("main_release")) {
+            return Optional.of(root.get("main_release").asInt());
+        }
+        return Optional.empty();
+    }
+
+    private Set<Integer> fetchWishlistReleaseIds(String username, int perPage) {
+        Set<Integer> ids = new HashSet<>();
+        if (token == null || token.isBlank() || username == null || username.isBlank()) {
+            return ids;
+        }
+        try {
+            String qs = "?sort=added&sort_order=desc&page=1&per_page=" + Math.max(1, Math.min(perPage, 100));
+            URI uri = URI.create(API_BASE + "/users/" + url(username) + "/wants" + qs);
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(12))
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                return ids;
+            }
+            JsonNode root = mapper.readTree(resp.body());
+            JsonNode wants = root.get("wants");
+            if (wants != null && wants.isArray()) {
+                for (JsonNode item : wants) {
+                    JsonNode basic = item.get("basic_information");
+                    if (basic != null && basic.hasNonNull("id")) {
+                        ids.add(basic.get("id").asInt());
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return ids;
+    }
+
+    private Set<Integer> fetchCollectionReleaseIds(String username, int perPage) {
+        Set<Integer> ids = new HashSet<>();
+        if (token == null || token.isBlank() || username == null || username.isBlank()) {
+            return ids;
+        }
+        try {
+            String qs = "?sort=added&sort_order=desc&page=1&per_page=" + Math.max(1, Math.min(perPage, 100));
+            URI uri = URI.create(API_BASE + "/users/" + url(username) + "/collection/folders/0/releases" + qs);
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(12))
+                    .header("Accept", "application/json")
+                    .header("User-Agent", userAgent)
+                    .header("Authorization", "Discogs token=" + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                return ids;
+            }
+            JsonNode root = mapper.readTree(resp.body());
+            JsonNode releases = root.get("releases");
+            if (releases != null && releases.isArray()) {
+                for (JsonNode item : releases) {
+                    if (item.hasNonNull("id")) {
+                        ids.add(item.get("id").asInt());
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return ids;
     }
 
     private Optional<String> searchOnce(String artist, String album, Integer year, String trackTitle, boolean master) throws IOException, InterruptedException {

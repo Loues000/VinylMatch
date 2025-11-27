@@ -40,6 +40,8 @@ public class ApiServer {
     private static final ConcurrentHashMap<CacheKey, CacheEntry> PLAYLIST_CACHE = new ConcurrentHashMap<>();
     private static volatile String lastAuthSignature = null;
     private static final Map<String, com.hctamlyniv.DiscogsService> DISCOGS_SERVICES = new ConcurrentHashMap<>();
+    private static final Map<String, DiscogsSession> DISCOGS_SESSIONS = new ConcurrentHashMap<>();
+    private static final java.util.Set<String> ALLOWED_ORIGINS = buildAllowedOrigins();
     private static final HexFormat HEX_FORMAT = HexFormat.of();
 
     public static void start() throws IOException {
@@ -55,7 +57,7 @@ public class ApiServer {
         server.createContext("/api/playlist", exchange -> {
             CacheKey cacheKey = null;
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
                     exchange.sendResponseHeaders(204, -1);
                     return;
@@ -149,7 +151,7 @@ public class ApiServer {
 
         server.createContext("/api/user/playlists", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -239,7 +241,7 @@ public class ApiServer {
         // Discogs-Suche (Batch, asynchron zum Playlist-Laden)
         server.createContext("/api/discogs/batch", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -318,7 +320,7 @@ public class ApiServer {
         // Discogs-Suche (on-demand)
         server.createContext("/api/discogs/search", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -379,10 +381,313 @@ public class ApiServer {
             }
         });
 
+        // Discogs-Session-Status
+        server.createContext("/api/discogs/status", exchange -> {
+            try {
+                addCorsHeaders(exchange);
+                if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur GET erlaubt");
+                    return;
+                }
+                DiscogsSession session = getDiscogsSession(exchange);
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("loggedIn", session != null && session.username() != null);
+                if (session != null) {
+                    payload.put("username", session.username());
+                    payload.put("name", session.displayName());
+                }
+                String json = MAPPER.writeValueAsString(payload);
+                byte[] out = json.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, out.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(out); }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler bei Discogs-Status: " + e.getMessage());
+            }
+        });
+
+        // Discogs-Login via User-Token
+        server.createContext("/api/discogs/login", exchange -> {
+            try {
+                addCorsHeaders(exchange);
+                if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur POST erlaubt");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map payload = MAPPER.readValue(body, Map.class);
+                String token = stringValue(payload.get("token"));
+                String userAgent = stringValue(payload.getOrDefault("userAgent", com.hctamlyniv.Config.getDiscogsUserAgent()));
+                if (token == null || token.isBlank()) {
+                    sendError(exchange, 400, "Discogs-User-Token erforderlich");
+                    return;
+                }
+                String ua = (userAgent == null || userAgent.isBlank()) ? "VinylMatch/1.0" : userAgent;
+                com.hctamlyniv.DiscogsService service = getDiscogsService(token, ua);
+                com.hctamlyniv.DiscogsService.DiscogsProfile profile = service.fetchProfile().orElse(null);
+                if (profile == null || profile.username() == null) {
+                    sendError(exchange, 401, "Discogs-Token ungültig oder Zugriff verweigert");
+                    return;
+                }
+                String oldSessionId = cookieValue(exchange, "discogs_session");
+                if (oldSessionId != null) {
+                    DISCOGS_SESSIONS.remove(oldSessionId);
+                }
+                DISCOGS_SESSIONS.entrySet().removeIf(entry -> profile.username().equals(entry.getValue().username()));
+                String sessionId = java.util.UUID.randomUUID().toString();
+                DiscogsSession session = new DiscogsSession(sessionId, token, ua, profile.username(), profile.name());
+                DISCOGS_SESSIONS.put(sessionId, session);
+                setDiscogsSessionCookie(exchange, sessionId, 86400);
+                Map<String, Object> response = new HashMap<>();
+                response.put("username", profile.username());
+                response.put("name", profile.name());
+                byte[] out = MAPPER.writeValueAsBytes(response);
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, out.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(out); }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler beim Discogs-Login: " + e.getMessage());
+            }
+        });
+
+        // Discogs-Logout
+        server.createContext("/api/discogs/logout", exchange -> {
+            try {
+                addCorsHeaders(exchange);
+                if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur POST erlaubt");
+                    return;
+                }
+                String sessionId = cookieValue(exchange, "discogs_session");
+                if (sessionId != null) {
+                    DISCOGS_SESSIONS.remove(sessionId);
+                }
+                setDiscogsSessionCookie(exchange, null, 0);
+                exchange.sendResponseHeaders(204, -1);
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler beim Discogs-Logout: " + e.getMessage());
+            }
+        });
+
+        // Wunschliste abrufen (kleines Preview)
+        server.createContext("/api/discogs/wishlist", exchange -> {
+            try {
+                addCorsHeaders(exchange);
+                if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur GET erlaubt");
+                    return;
+                }
+                DiscogsSession session = getDiscogsSession(exchange);
+                if (session == null || session.username() == null) {
+                    sendError(exchange, 401, "Discogs-Login erforderlich");
+                    return;
+                }
+                int limit = 12;
+                Map<String, String> params = parseQueryParams(exchange.getRequestURI().getRawQuery());
+                if (params.containsKey("limit")) {
+                    try {
+                        int parsed = Integer.parseInt(params.get("limit"));
+                        if (parsed > 0 && parsed <= 50) limit = parsed;
+                    } catch (NumberFormatException ignored) {}
+                }
+                com.hctamlyniv.DiscogsService service = getDiscogsService(session.token(), session.userAgent());
+                com.hctamlyniv.DiscogsService.WishlistResult wishlist = service.fetchWishlist(session.username(), 1, limit);
+                byte[] out = MAPPER.writeValueAsBytes(wishlist);
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, out.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(out); }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler beim Laden der Wunschliste: " + e.getMessage());
+            }
+        });
+
+        // Wunschliste hinzufügen
+        server.createContext("/api/discogs/wishlist/add", exchange -> {
+            try {
+                addCorsHeaders(exchange);
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur POST erlaubt");
+                    return;
+                }
+                DiscogsSession session = getDiscogsSession(exchange);
+                if (session == null || session.username() == null) {
+                    sendError(exchange, 401, "Discogs-Login erforderlich");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map payload = MAPPER.readValue(body, Map.class);
+                String url = stringValue(payload.get("url"));
+                if (!isDiscogsWebUrl(url)) {
+                    sendError(exchange, 400, "Parameter 'url' erforderlich");
+                    return;
+                }
+                com.hctamlyniv.DiscogsService service = getDiscogsService(session.token(), session.userAgent());
+                Integer releaseId = service.resolveReleaseIdFromUrl(url).orElse(null);
+                if (releaseId == null) {
+                    sendError(exchange, 422, "Konnte Release-ID aus URL nicht bestimmen");
+                    return;
+                }
+                boolean added = service.addToWantlist(session.username(), releaseId);
+                Map<String, Object> response = Map.of(
+                        "added", added,
+                        "releaseId", releaseId
+                );
+                byte[] out = MAPPER.writeValueAsBytes(response);
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(added ? 200 : 409, out.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(out); }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler beim Hinzufügen zur Wunschliste: " + e.getMessage());
+            }
+        });
+
+        // Besitz-/Wunschlisten-Status für mehrere Releases
+        server.createContext("/api/discogs/library-status", exchange -> {
+            try {
+                addCorsHeaders(exchange);
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur POST erlaubt");
+                    return;
+                }
+                DiscogsSession session = getDiscogsSession(exchange);
+                if (session == null || session.username() == null) {
+                    sendError(exchange, 401, "Discogs-Login erforderlich");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map payload = MAPPER.readValue(body, Map.class);
+                Object urlsObj = payload.get("urls");
+                if (!(urlsObj instanceof List<?> list) || list.isEmpty()) {
+                    sendError(exchange, 400, "Payload muss 'urls' enthalten");
+                    return;
+                }
+                List<String> urls = new ArrayList<>();
+                for (Object o : list) {
+                    if (o instanceof String s && isDiscogsWebUrl(s)) {
+                        urls.add(s.trim());
+                    }
+                }
+                if (urls.isEmpty()) {
+                    sendError(exchange, 400, "Keine gültigen URLs gefunden");
+                    return;
+                }
+                com.hctamlyniv.DiscogsService service = getDiscogsService(session.token(), session.userAgent());
+                Map<String, Integer> resolved = new HashMap<>();
+                for (String url : urls) {
+                    service.resolveReleaseIdFromUrl(url).ifPresent(id -> resolved.put(url, id));
+                }
+                Map<Integer, com.hctamlyniv.DiscogsService.LibraryFlags> flags = service.lookupLibraryFlags(session.username(), new java.util.HashSet<>(resolved.values()));
+                List<Map<String, Object>> results = new ArrayList<>();
+                for (String url : urls) {
+                    Integer id = resolved.get(url);
+                    com.hctamlyniv.DiscogsService.LibraryFlags flag = (id == null) ? null : flags.get(id);
+                    Map<String, Object> entry = new HashMap<>();
+                    entry.put("url", url);
+                    entry.put("releaseId", id);
+                    entry.put("inWishlist", flag != null && flag.inWishlist());
+                    entry.put("inCollection", flag != null && flag.inCollection());
+                    results.add(entry);
+                }
+                byte[] out = MAPPER.writeValueAsBytes(Map.of("results", results));
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, out.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(out); }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler beim Laden des Library-Status: " + e.getMessage());
+            }
+        });
+
+        // Dev: Curation candidates for manual Discogs link verification
+        server.createContext("/api/discogs/curation/candidates", exchange -> {
+            try {
+                addCorsHeaders(exchange);
+                if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur POST erlaubt");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map payload = MAPPER.readValue(body, Map.class);
+                String artist = stringValue(payload.get("artist"));
+                String album = stringValue(payload.get("album"));
+                Integer year = intValue(payload.get("year"));
+                String trackTitle = stringValue(payload.get("trackTitle"));
+                if (artist == null && album == null && trackTitle == null) {
+                    sendError(exchange, 400, "Ungültige Anfragedaten");
+                    return;
+                }
+                com.hctamlyniv.DiscogsService discogs = getDiscogsService();
+                if (discogs == null) {
+                    sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
+                    return;
+                }
+                java.util.List<com.hctamlyniv.DiscogsService.CurationCandidate> candidates = discogs.fetchCurationCandidates(
+                        artist, album, year, trackTitle, 4);
+                byte[] out = MAPPER.writeValueAsBytes(Map.of("candidates", candidates));
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, out.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(out); }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler beim Laden der Curation-Kandidaten: " + e.getMessage());
+            }
+        });
+
+        // Dev: Persist curated Discogs links for better matching
+        server.createContext("/api/discogs/curation/save", exchange -> {
+            try {
+                addCorsHeaders(exchange);
+                if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur POST erlaubt");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map payload = MAPPER.readValue(body, Map.class);
+                String artist = stringValue(payload.get("artist"));
+                String album = stringValue(payload.get("album"));
+                Integer year = intValue(payload.get("year"));
+                String trackTitle = stringValue(payload.get("trackTitle"));
+                String barcode = stringValue(payload.get("barcode"));
+                String url = stringValue(payload.get("url"));
+                String thumb = stringValue(payload.get("thumb"));
+                if (!isDiscogsWebUrl(url)) {
+                    sendError(exchange, 400, "Parameter 'url' erforderlich");
+                    return;
+                }
+                com.hctamlyniv.DiscogsService discogs = getDiscogsService();
+                if (discogs == null) {
+                    sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
+                    return;
+                }
+                com.hctamlyniv.DiscogsService.CuratedLink saved = discogs.saveCuratedLink(artist, album, year, trackTitle,
+                        barcode, url, thumb);
+                byte[] out = MAPPER.writeValueAsBytes(Map.of("saved", true, "entry", saved));
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, out.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(out); }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler beim Speichern des kuratierten Links: " + e.getMessage());
+            }
+        });
+
         // Auth-Status
         server.createContext("/api/auth/status", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -406,7 +711,7 @@ public class ApiServer {
         // Login starten (liefert Authorization-URL)
         server.createContext("/api/auth/login", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -431,7 +736,7 @@ public class ApiServer {
         // Logout
         server.createContext("/api/auth/logout", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -544,10 +849,164 @@ public class ApiServer {
         return DISCOGS_SERVICES.computeIfAbsent(key, k -> new com.hctamlyniv.DiscogsService(tokenFinal, userAgentFinal));
     }
 
-    private static void addCorsHeaders(Headers h) {
-        h.add("Access-Control-Allow-Origin", "*");
-        h.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        h.add("Access-Control-Allow-Headers", "Content-Type");
+    private static com.hctamlyniv.DiscogsService getDiscogsService(String token, String userAgent) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        String ua = (userAgent == null || userAgent.isBlank()) ? "VinylMatch/1.0" : userAgent;
+        final String key = token + "|" + ua;
+        return DISCOGS_SERVICES.computeIfAbsent(key, k -> new com.hctamlyniv.DiscogsService(token, ua));
+    }
+
+    private static DiscogsSession getDiscogsSession(HttpExchange exchange) {
+        String sessionId = cookieValue(exchange, "discogs_session");
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        return DISCOGS_SESSIONS.get(sessionId);
+    }
+
+    private static String cookieValue(HttpExchange exchange, String name) {
+        if (exchange == null || name == null) {
+            return null;
+        }
+        List<String> cookies = exchange.getRequestHeaders().get("Cookie");
+        if (cookies == null) {
+            return null;
+        }
+        for (String header : cookies) {
+            if (header == null) continue;
+            String[] parts = header.split(";\\s*");
+            for (String part : parts) {
+                int idx = part.indexOf('=');
+                if (idx <= 0) continue;
+                String key = part.substring(0, idx).trim();
+                String value = part.substring(idx + 1).trim();
+                if (name.equals(key)) {
+                    return value;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void addCorsHeaders(HttpExchange exchange) {
+        Headers response = exchange.getResponseHeaders();
+        String origin = resolveAllowedOrigin(exchange);
+        if (origin != null) {
+            response.set("Access-Control-Allow-Origin", origin);
+            response.set("Vary", "Origin");
+            response.set("Access-Control-Allow-Credentials", "true");
+        }
+        response.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response.set("Access-Control-Allow-Headers", "Content-Type");
+    }
+
+    private static void setDiscogsSessionCookie(HttpExchange exchange, String value, int maxAgeSeconds) {
+        String sanitized = (value == null) ? "" : value.replaceAll("[^A-Za-z0-9-]", "");
+        StringBuilder cookie = new StringBuilder();
+        cookie.append("discogs_session=").append(sanitized);
+        cookie.append("; Path=/");
+        cookie.append("; Max-Age=").append(Math.max(0, maxAgeSeconds));
+        cookie.append("; HttpOnly; SameSite=Strict");
+        if (isSecureRequest(exchange)) {
+            cookie.append("; Secure");
+        }
+        exchange.getResponseHeaders().add("Set-Cookie", cookie.toString());
+    }
+
+    private static String resolveAllowedOrigin(HttpExchange exchange) {
+        Headers request = exchange.getRequestHeaders();
+        String originHeader = request.getFirst("Origin");
+        String origin = normalizeOrigin(originHeader);
+        if (origin == null) {
+            return null;
+        }
+        String hostHeader = request.getFirst("Host");
+        if (hostHeader != null) {
+            try {
+                java.net.URI uri = java.net.URI.create(origin);
+                String originHost = uri.getHost();
+                if (originHost != null && originHost.equalsIgnoreCase(hostHeader.split(":")[0])) {
+                    return origin;
+                }
+            } catch (Exception ignored) {}
+        }
+        return ALLOWED_ORIGINS.contains(origin) ? origin : null;
+    }
+
+    private static String normalizeOrigin(String origin) {
+        if (origin == null || origin.isBlank()) {
+            return null;
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(origin.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || host == null) {
+                return null;
+            }
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+                return null;
+            }
+            int port = uri.getPort();
+            StringBuilder sb = new StringBuilder();
+            sb.append(scheme.toLowerCase()).append("://").append(host.toLowerCase());
+            if (port > 0 && port != ("https".equalsIgnoreCase(scheme) ? 443 : 80)) {
+                sb.append(":" + port);
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean isDiscogsWebUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(url.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || host == null) {
+                return false;
+            }
+            if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+                return false;
+            }
+            String lowerHost = host.toLowerCase();
+            return lowerHost.equals("discogs.com") || lowerHost.endsWith(".discogs.com");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static java.util.Set<String> buildAllowedOrigins() {
+        java.util.Set<String> allowed = new java.util.HashSet<>();
+        allowed.add("http://localhost:3000");
+        allowed.add("http://127.0.0.1:3000");
+        allowed.add("http://localhost:8888");
+        allowed.add("http://127.0.0.1:8888");
+        String env = System.getenv("CORS_ALLOWED_ORIGINS");
+        if (env != null) {
+            for (String part : env.split(",")) {
+                String normalized = normalizeOrigin(part);
+                if (normalized != null) {
+                    allowed.add(normalized);
+                }
+            }
+        }
+        return allowed;
+    }
+
+    private static boolean isSecureRequest(HttpExchange exchange) {
+        String proto = exchange.getRequestHeaders().getFirst("X-Forwarded-Proto");
+        if (proto != null && proto.equalsIgnoreCase("https")) {
+            return true;
+        }
+        String origin = exchange.getRequestHeaders().getFirst("Origin");
+        return origin != null && origin.toLowerCase().startsWith("https");
     }
 
     private static String contentTypeFor(Path file) {
@@ -731,5 +1190,8 @@ public class ApiServer {
     }
 
     private record CacheSnapshot(PlaylistData playlistData, long expiresAtMillis) {
+    }
+
+    private record DiscogsSession(String sessionId, String token, String userAgent, String username, String displayName) {
     }
 }
