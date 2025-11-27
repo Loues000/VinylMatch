@@ -1,30 +1,90 @@
-<section class="curation-panel" aria-labelledby="curation-heading">
-    <div class="curation-card">
-        <div class="curation-card__header">
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VINYL MATCH — Curation</title>
+    <link rel="stylesheet" href="/common/header.css">
+    <link rel="stylesheet" href="/styles/curation.css">
+</head>
+<body>
+<div id="header"></div>
+
+<div id="global-loading" class="loading-overlay hidden" role="alert" aria-live="assertive">
+    <div class="spinner" aria-hidden="true"></div>
+    <p id="global-loading-text">Playlist wird geladen …</p>
+</div>
+
+<main class="curation-page" id="curation-page">
+    <section class="curation-hero">
+        <div>
+            <p class="eyebrow">Dev only</p>
+            <h1>Playlist-Daten sammeln</h1>
+            <p class="muted">Discogs-Kandidaten sichten und gleichzeitig Links für HHV, JPC und Amazon vervollständigen – separat von der eigentlichen Playlist-Seite.</p>
+        </div>
+        <div class="hero-badge">Schneller Abgleich · Vinyl-Fokus</div>
+    </section>
+
+    <section class="curation-intro">
+        <div class="intro-card">
             <div>
-                <p class="eyebrow">Dev · Discogs-Kuration</p>
-                <h2 id="curation-heading">Links für diese Playlist sammeln</h2>
-                <p class="muted">Steuere Album für Album durch die Playlist, prüfe die Discogs-Treffer und sichere den richtigen Link in einem Sammel-File.</p>
+                <p class="eyebrow">1. Playlist wählen</p>
+                <h2>Füge deine Spotify-Playlist ein</h2>
+                <p class="muted">Nur Alben ohne vollständige Links werden in die Queue aufgenommen.</p>
             </div>
-            <div class="curation-progress" id="curation-progress">0 / 0</div>
-        </div>
-
-        <div class="curation-toolbar">
-            <button type="button" class="btn" id="curation-start">Playlist scannen</button>
-            <div class="curation-nav">
-                <button type="button" class="btn ghost" id="curation-prev" aria-label="Vorheriges Album">
-                    ← Zurück
-                </button>
-                <button type="button" class="btn ghost" id="curation-next" aria-label="Nächstes Album">
-                    Weiter →
-                </button>
+            <div class="input-row">
+                <label class="sr-only" for="curation-playlist-url">Spotify-Playlist-URL</label>
+                <textarea id="curation-playlist-url" placeholder="https://open.spotify.com/playlist/…"></textarea>
+                <div class="actions">
+                    <button class="btn" id="curation-use-link" type="button">Playlist laden</button>
+                </div>
             </div>
+            <p class="hint">Wir laden die Playlist nur für diese Sitzung und zeigen sie dir hier im Dev-Curation-Tool.</p>
         </div>
+        <div class="intro-meta">
+            <div class="meta-pill">Sammelt Discogs, HHV, JPC &amp; Amazon</div>
+            <div class="meta-pill">Filtert auf Album/Vinyl</div>
+            <div class="meta-pill">Lokale Sitzung, kein Live-Betrieb</div>
+        </div>
+    </section>
 
-        <div class="curation-body">
-            <div class="curation-album" id="curation-album"></div>
-            <div class="curation-candidates" id="curation-candidates"></div>
-            <p class="muted" id="curation-empty">Klicke auf "Playlist scannen", um die ersten Kandidaten anzuzeigen.</p>
+    <section class="curation-workspace">
+        <aside class="playlist-summary" id="curation-summary">
+            <p class="eyebrow">Playlist</p>
+            <h3 id="curation-summary-title">Noch nichts geladen</h3>
+            <p class="muted" id="curation-summary-details">Füge oben eine Playlist hinzu, um den Curation-Modus zu starten.</p>
+        </aside>
+        <div class="curation-panel-wrapper">
+            <section class="curation-panel" aria-labelledby="curation-heading" id="curation-panel-container" data-template="">
+                <div class="curation-card">
+                    <div class="curation-card__header">
+                        <div>
+                            <p class="eyebrow">Dev · Discogs &amp; Shops</p>
+                            <h2 id="curation-heading">Fehlende Links für diese Playlist sammeln</h2>
+                            <p class="muted">Steuere Album für Album durch die Playlist, priorisiere Vinyl-Treffer und sichere fehlende Links für Discogs, HHV, JPC und Amazon.</p>
+                        </div>
+                        <div class="curation-progress" id="curation-progress">0 / 0</div>
+                    </div>
+
+                    <div class="curation-toolbar">
+                        <button type="button" class="btn" id="curation-start">Playlist scannen</button>
+                        <div class="curation-nav">
+                            <button type="button" class="btn ghost" id="curation-prev" aria-label="Vorheriges Album">← Zurück</button>
+                            <button type="button" class="btn ghost" id="curation-next" aria-label="Nächstes Album">Weiter →</button>
+                        </div>
+                    </div>
+
+                    <div class="curation-body">
+                        <div class="curation-album" id="curation-album"></div>
+                        <div class="curation-candidates" id="curation-candidates"></div>
+                        <p class="muted" id="curation-empty">Klicke auf "Playlist scannen", um die ersten Kandidaten anzuzeigen.</p>
+                    </div>
+                </div>
+            </section>
         </div>
-    </div>
-</section>
+    </section>
+</main>
+
+<script type="module" src="/dist/curation.js"></script>
+</body>
+</html>

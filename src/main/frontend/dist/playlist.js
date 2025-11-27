@@ -372,6 +372,13 @@ function setupDiscogsPanel() {
     const connectBtn = document.getElementById("discogs-connect");
     const refreshBtn = document.getElementById("discogs-refresh");
     const disconnectBtn = document.getElementById("discogs-disconnect");
+    const popupBtn = document.getElementById("discogs-popup");
+    popupBtn?.addEventListener("click", () => {
+        const popup = window.open("https://www.discogs.com/login", "discogs-login", "width=520,height=720");
+        if (popup)
+            popup.focus();
+        setTimeout(() => refreshDiscogsStatus().then(() => refreshWishlistPreview()).then(() => scheduleLibraryRefresh(200)), 1800);
+    });
     connectBtn?.addEventListener("click", () => connectDiscogs());
     refreshBtn?.addEventListener("click", () => {
         refreshWishlistPreview();

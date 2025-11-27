@@ -433,6 +433,13 @@ body {
     align-items: flex-start;
 }
 
+.discogs-layout {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 14px;
+}
+
 .discogs-chip {
     padding: 8px 14px;
     border-radius: 999px;
@@ -447,9 +454,21 @@ body {
 }
 
 .discogs-login {
-    margin-top: 16px;
-    display: grid;
-    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid rgba(31, 41, 55, 0.12);
+    border-radius: 12px;
+    background: linear-gradient(160deg, #f8fafc, #eef2ff);
+}
+
+.discogs-login__intro .muted {
+    margin: 6px 0;
+}
+
+.discogs-token label {
+    font-weight: 700;
 }
 
 .discogs-login__row {
@@ -466,7 +485,10 @@ body {
 }
 
 .discogs-dashboard {
-    margin-top: 16px;
+    background: #f8fafc;
+    border: 1px solid rgba(31, 41, 55, 0.1);
+    border-radius: 12px;
+    padding: 14px;
     display: grid;
     gap: 16px;
 }
