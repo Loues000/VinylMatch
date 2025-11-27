@@ -599,6 +599,81 @@ public class ApiServer {
             }
         });
 
+        // Dev: Curation candidates for manual Discogs link verification
+        server.createContext("/api/discogs/curation/candidates", exchange -> {
+            try {
+                addCorsHeaders(exchange.getResponseHeaders());
+                if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur POST erlaubt");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map payload = MAPPER.readValue(body, Map.class);
+                String artist = stringValue(payload.get("artist"));
+                String album = stringValue(payload.get("album"));
+                Integer year = intValue(payload.get("year"));
+                String trackTitle = stringValue(payload.get("trackTitle"));
+                com.hctamlyniv.DiscogsService discogs = getDiscogsService();
+                if (discogs == null) {
+                    sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
+                    return;
+                }
+                java.util.List<com.hctamlyniv.DiscogsService.CurationCandidate> candidates = discogs.fetchCurationCandidates(
+                        artist, album, year, trackTitle, 4);
+                byte[] out = MAPPER.writeValueAsBytes(Map.of("candidates", candidates));
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, out.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(out); }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler beim Laden der Curation-Kandidaten: " + e.getMessage());
+            }
+        });
+
+        // Dev: Persist curated Discogs links for better matching
+        server.createContext("/api/discogs/curation/save", exchange -> {
+            try {
+                addCorsHeaders(exchange.getResponseHeaders());
+                if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendError(exchange, 405, "Nur POST erlaubt");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map payload = MAPPER.readValue(body, Map.class);
+                String artist = stringValue(payload.get("artist"));
+                String album = stringValue(payload.get("album"));
+                Integer year = intValue(payload.get("year"));
+                String trackTitle = stringValue(payload.get("trackTitle"));
+                String barcode = stringValue(payload.get("barcode"));
+                String url = stringValue(payload.get("url"));
+                String thumb = stringValue(payload.get("thumb"));
+                if (url == null || url.isBlank()) {
+                    sendError(exchange, 400, "Parameter 'url' erforderlich");
+                    return;
+                }
+                com.hctamlyniv.DiscogsService discogs = getDiscogsService();
+                if (discogs == null) {
+                    sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
+                    return;
+                }
+                com.hctamlyniv.DiscogsService.CuratedLink saved = discogs.saveCuratedLink(artist, album, year, trackTitle,
+                        barcode, url, thumb);
+                byte[] out = MAPPER.writeValueAsBytes(Map.of("saved", true, "entry", saved));
+                exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, out.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(out); }
+            } catch (Exception e) {
+                sendError(exchange, 500, "Fehler beim Speichern des kuratierten Links: " + e.getMessage());
+            }
+        });
+
         // Auth-Status
         server.createContext("/api/auth/status", exchange -> {
             try {

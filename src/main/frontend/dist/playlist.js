@@ -13,6 +13,14 @@ const discogsState = {
     processing: false,
 };
 
+const curationState = {
+    queue: [],
+    index: 0,
+    candidates: [],
+    loading: false,
+    saving: false,
+};
+
 const discogsUiState = {
     loggedIn: false,
     username: null,
@@ -356,6 +364,306 @@ function setupDiscogsPanel() {
     });
     disconnectBtn?.addEventListener("click", () => disconnectDiscogs());
     refreshDiscogsStatus().then(() => refreshWishlistPreview()).then(() => scheduleLibraryRefresh(200));
+}
+
+function resetCurationUi(message) {
+    const album = document.getElementById("curation-album");
+    const grid = document.getElementById("curation-candidates");
+    const empty = document.getElementById("curation-empty");
+    if (album)
+        album.textContent = "";
+    if (grid)
+        grid.textContent = "";
+    if (empty) {
+        if (message)
+            empty.textContent = message;
+        empty.classList.remove("hidden");
+    }
+}
+
+function updateCurationProgress() {
+    const progress = document.getElementById("curation-progress");
+    if (!progress)
+        return;
+    if (!curationState.queue.length) {
+        progress.textContent = "0 / 0";
+        return;
+    }
+    progress.textContent = `${curationState.index + 1} / ${curationState.queue.length}`;
+}
+
+function renderCurationAlbum(item) {
+    const album = document.getElementById("curation-album");
+    const empty = document.getElementById("curation-empty");
+    if (!album)
+        return;
+    album.textContent = "";
+    if (empty)
+        empty.classList.add("hidden");
+    if (!item) {
+        resetCurationUi("Keine Playlist-Titel geladen.");
+        return;
+    }
+    const img = document.createElement("img");
+    img.className = "thumb";
+    img.src = item.coverUrl || PLACEHOLDER_IMG;
+    img.alt = item.album || "Album Cover";
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = item.album || "Unbekanntes Album";
+    const artist = document.createElement("div");
+    artist.className = "artist";
+    artist.textContent = item.artist || "Unbekannter Artist";
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = item.trackName ? `aus: ${item.trackName}` : "Playlist-Album";
+    meta.appendChild(title);
+    meta.appendChild(artist);
+    meta.appendChild(hint);
+    album.appendChild(img);
+    album.appendChild(meta);
+}
+
+function renderCurationCandidates(item, candidates) {
+    const grid = document.getElementById("curation-candidates");
+    const empty = document.getElementById("curation-empty");
+    if (!grid)
+        return;
+    grid.textContent = "";
+    if (!Array.isArray(candidates) || !candidates.length) {
+        if (empty) {
+            empty.textContent = "Keine Kandidaten gefunden. Versuch es mit dem nächsten Album.";
+            empty.classList.remove("hidden");
+        }
+        return;
+    }
+    if (empty)
+        empty.classList.add("hidden");
+    for (const candidate of candidates) {
+        const card = document.createElement("div");
+        card.className = "candidate-card";
+        const bar = document.createElement("div");
+        bar.className = "candidate-browser";
+        const urlLabel = document.createElement("div");
+        urlLabel.className = "url";
+        urlLabel.textContent = candidate.url || "ohne URL";
+        const openLink = document.createElement("a");
+        openLink.href = candidate.url || "#";
+        openLink.target = "_blank";
+        openLink.rel = "noopener noreferrer";
+        openLink.textContent = "Öffnen";
+        bar.appendChild(urlLabel);
+        bar.appendChild(openLink);
+        const preview = document.createElement("div");
+        preview.className = "candidate-preview";
+        if (candidate.thumb) {
+            const img = document.createElement("img");
+            img.src = candidate.thumb;
+            img.alt = candidate.title || "Discogs Vorschau";
+            preview.appendChild(img);
+        }
+        else {
+            const placeholder = document.createElement("div");
+            placeholder.className = "placeholder";
+            placeholder.textContent = "Kein Vorschaubild";
+            preview.appendChild(placeholder);
+        }
+        const meta = document.createElement("div");
+        meta.className = "candidate-meta";
+        const title = document.createElement("div");
+        title.className = "title";
+        title.textContent = candidate.title || "Ohne Titel";
+        const details = document.createElement("div");
+        details.className = "details";
+        const detailParts = [];
+        if (candidate.artist)
+            detailParts.push(candidate.artist);
+        if (candidate.year)
+            detailParts.push(candidate.year);
+        if (candidate.country)
+            detailParts.push(candidate.country);
+        if (candidate.format)
+            detailParts.push(candidate.format);
+        details.textContent = detailParts.join(" • ") || "Discogs-Ergebnis";
+        meta.appendChild(title);
+        meta.appendChild(details);
+        const actions = document.createElement("div");
+        actions.className = "candidate-actions";
+        const select = document.createElement("button");
+        select.type = "button";
+        select.className = "btn";
+        select.textContent = "Als korrekt sichern";
+        select.addEventListener("click", () => selectCandidate(item, candidate, select));
+        actions.appendChild(select);
+        card.appendChild(bar);
+        card.appendChild(preview);
+        card.appendChild(meta);
+        card.appendChild(actions);
+        grid.appendChild(card);
+    }
+}
+
+function buildCurationQueue() {
+    const tracks = state.aggregated?.tracks;
+    if (!Array.isArray(tracks)) {
+        return [];
+    }
+    const seen = new Set();
+    const queue = [];
+    for (const track of tracks) {
+        if (!track || !track.album)
+            continue;
+        const artist = primaryArtist(track.artist) || track.artist;
+        const normArtist = normalizeForSearch(artist);
+        const normAlbum = normalizeForSearch(track.album);
+        const year = typeof track.releaseYear === "number" ? track.releaseYear : null;
+        const key = `${normArtist}|${normAlbum}|${year ?? ""}`;
+        if (seen.has(key))
+            continue;
+        seen.add(key);
+        queue.push({
+            artist: artist,
+            album: track.album,
+            releaseYear: year,
+            trackName: track.trackName,
+            coverUrl: track.coverUrl,
+            discogsAlbumUrl: track.discogsAlbumUrl,
+        });
+    }
+    return queue.sort((a, b) => {
+        const aWeight = a.discogsAlbumUrl ? 1 : 0;
+        const bWeight = b.discogsAlbumUrl ? 1 : 0;
+        return aWeight - bWeight;
+    });
+}
+
+async function loadCurationCandidates(item) {
+    if (!item)
+        return;
+    curationState.loading = true;
+    const empty = document.getElementById("curation-empty");
+    if (empty) {
+        empty.textContent = "Discogs-Kandidaten werden geladen …";
+        empty.classList.remove("hidden");
+    }
+    try {
+        const res = await fetch("/api/discogs/curation/candidates", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                artist: item.artist,
+                album: item.album,
+                year: item.releaseYear,
+                trackTitle: item.trackName,
+            }),
+        });
+        if (!res.ok)
+            throw new Error("HTTP " + res.status);
+        const payload = await res.json();
+        curationState.candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
+        renderCurationCandidates(item, curationState.candidates);
+    }
+    catch (e) {
+        console.warn("Konnte Curation-Kandidaten nicht laden", e);
+        resetCurationUi("Fehler beim Laden der Kandidaten.");
+    }
+    finally {
+        curationState.loading = false;
+    }
+}
+
+async function selectCandidate(item, candidate, button) {
+    if (!candidate?.url || curationState.saving)
+        return;
+    curationState.saving = true;
+    const original = button.textContent;
+    button.textContent = "Speichert …";
+    button.disabled = true;
+    try {
+        const res = await fetch("/api/discogs/curation/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                artist: item.artist,
+                album: item.album,
+                year: item.releaseYear,
+                trackTitle: item.trackName,
+                url: candidate.url,
+                thumb: candidate.thumb,
+            }),
+        });
+        if (!res.ok)
+            throw new Error("HTTP " + res.status);
+        applyManualDiscogsUrl(item, candidate.url);
+        button.textContent = "Gespeichert ✔";
+        setTimeout(() => button.textContent = original, 1200);
+    }
+    catch (e) {
+        alert("Konnte Link nicht speichern: " + (e instanceof Error ? e.message : String(e)));
+        button.textContent = original;
+    }
+    finally {
+        button.disabled = false;
+        curationState.saving = false;
+    }
+}
+
+function applyManualDiscogsUrl(item, url) {
+    if (!Array.isArray(state.aggregated?.tracks) || !url)
+        return;
+    for (let i = 0; i < state.aggregated.tracks.length; i++) {
+        const track = state.aggregated.tracks[i];
+        if (!track)
+            continue;
+        const artistMatch = normalizeForSearch(primaryArtist(track.artist) || track.artist) === normalizeForSearch(item.artist);
+        const albumMatch = normalizeForSearch(track.album) === normalizeForSearch(item.album);
+        const yearMatch = (typeof track.releaseYear === "number" ? track.releaseYear : null) === (item.releaseYear ?? null);
+        if (artistMatch && albumMatch && yearMatch) {
+            track.discogsAlbumUrl = url;
+            track.discogsStatus = "found";
+            const key = buildTrackKey(track, i);
+            if (key)
+                discogsState.completed.add(key);
+            markDiscogsResult(key, i, url);
+        }
+    }
+    item.discogsAlbumUrl = url;
+    scheduleLibraryRefresh(200);
+}
+
+async function showCurationItem(step = 0) {
+    if (!curationState.queue.length) {
+        resetCurationUi("Keine Playlist geladen.");
+        updateCurationProgress();
+        return;
+    }
+    curationState.index = Math.min(Math.max(0, curationState.index + step), curationState.queue.length - 1);
+    const current = curationState.queue[curationState.index];
+    renderCurationAlbum(current);
+    updateCurationProgress();
+    await loadCurationCandidates(current);
+}
+
+function setupCurationPanel() {
+    const startBtn = document.getElementById("curation-start");
+    const nextBtn = document.getElementById("curation-next");
+    const prevBtn = document.getElementById("curation-prev");
+    startBtn?.addEventListener("click", () => {
+        curationState.queue = buildCurationQueue();
+        curationState.index = 0;
+        if (!curationState.queue.length) {
+            resetCurationUi("Keine Playlist-Tracks gefunden.");
+            updateCurationProgress();
+            return;
+        }
+        showCurationItem(0);
+    });
+    nextBtn?.addEventListener("click", () => showCurationItem(1));
+    prevBtn?.addEventListener("click", () => showCurationItem(-1));
+    resetCurationUi("Noch keine Playlist geladen.");
+    updateCurationProgress();
 }
 
 function applyDiscogsResult(result) {
@@ -939,6 +1247,7 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
     }
     initViewToggle();
     setupDiscogsPanel();
+    setupCurationPanel();
     applyViewMode(state.viewMode, { rerender: false });
     state = {
         id: id || null,

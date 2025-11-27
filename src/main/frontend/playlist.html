@@ -73,6 +73,33 @@
         </div>
     </section>
 
+    <section class="curation-panel" aria-labelledby="curation-heading">
+        <div class="curation-card">
+            <div class="curation-card__header">
+                <div>
+                    <p class="eyebrow">Dev · Discogs-Kuration</p>
+                    <h2 id="curation-heading">Links für diese Playlist sammeln</h2>
+                    <p class="muted">Steuere Album für Album durch die Playlist, prüfe die Discogs-Treffer und sichere den richtigen Link in einem Sammel-File.</p>
+                </div>
+                <div class="curation-progress" id="curation-progress">0 / 0</div>
+            </div>
+
+            <div class="curation-toolbar">
+                <button type="button" class="btn" id="curation-start">Playlist scannen</button>
+                <div class="curation-nav">
+                    <button type="button" class="btn ghost" id="curation-prev" aria-label="Vorheriges Album">← Zurück</button>
+                    <button type="button" class="btn ghost" id="curation-next" aria-label="Nächstes Album">Weiter →</button>
+                </div>
+            </div>
+
+            <div class="curation-body">
+                <div class="curation-album" id="curation-album"></div>
+                <div class="curation-candidates" id="curation-candidates"></div>
+                <p class="muted" id="curation-empty">Klicke auf "Playlist scannen", um die ersten Kandidaten anzuzeigen.</p>
+            </div>
+        </div>
+    </section>
+
     <div id="playlist" class="playlist-tracks" aria-live="polite">Loading...</div>
 
     <div class="load-more-wrapper hidden" id="load-more-wrapper">
