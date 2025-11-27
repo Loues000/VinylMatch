@@ -410,12 +410,20 @@ async function fetchPlaylist(id) {
 function getPlaylistIdFromUrl(value) {
     if (!value)
         return null;
+    const trimmed = value.trim();
+    const idPattern = /^[A-Za-z0-9]{22}$/;
+    if (idPattern.test(trimmed))
+        return trimmed;
     try {
-        const parsed = new URL(value);
-        if (!parsed.hostname.includes("spotify.com"))
+        const parsed = new URL(trimmed);
+        const hostname = parsed.hostname.toLowerCase();
+        const isSpotifyHost = hostname === "spotify.com" || hostname === "open.spotify.com" || hostname === "play.spotify.com" || hostname === "www.spotify.com" || hostname.endsWith(".spotify.com");
+        if (!isSpotifyHost)
+            return null;
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
             return null;
         const segments = parsed.pathname.split("/").filter(Boolean);
-        if (segments[0] !== "playlist" || !segments[1])
+        if (segments[0] !== "playlist" || !segments[1] || !idPattern.test(segments[1]))
             return null;
         return segments[1].split("?")[0];
     }
@@ -433,6 +441,7 @@ async function loadPlaylistFromInput() {
         alert("Bitte füge eine gültige Spotify-Playlist ein.");
         return;
     }
+    console.info("Playlist-Ladevorgang gestartet", { playlistId: id });
     pageState.loading = true;
     showLoading("Playlist wird geladen …");
     try {
@@ -442,7 +451,8 @@ async function loadPlaylistFromInput() {
         pageState.curation?.refreshQueue();
     }
     catch (e) {
-        alert("Playlist konnte nicht geladen werden: " + (e instanceof Error ? e.message : String(e)));
+        console.error("Playlist konnte nicht geladen werden", e);
+        alert("Playlist konnte nicht geladen werden. Bitte versuche es später erneut.");
     }
     finally {
         hideLoading();

@@ -449,12 +449,20 @@ window.addEventListener("DOMContentLoaded", () => {
         const getPlaylistIdFromUrl = (value) => {
             if (!value)
                 return null;
+            const trimmed = value.trim();
+            const idPattern = /^[A-Za-z0-9]{22}$/;
+            if (idPattern.test(trimmed))
+                return trimmed;
             try {
-                const parsed = new URL(value);
-                if (!parsed.hostname.includes("spotify.com"))
+                const parsed = new URL(trimmed);
+                const hostname = parsed.hostname.toLowerCase();
+                const isSpotifyHost = hostname === "spotify.com" || hostname === "open.spotify.com" || hostname === "play.spotify.com" || hostname === "www.spotify.com" || hostname.endsWith(".spotify.com");
+                if (!isSpotifyHost)
+                    return null;
+                if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
                     return null;
                 const segments = parsed.pathname.split("/").filter(Boolean);
-                if (segments[0] !== "playlist" || !segments[1])
+                if (segments[0] !== "playlist" || !segments[1] || !idPattern.test(segments[1]))
                     return null;
                 return segments[1].split("?")[0];
             }
@@ -485,6 +493,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
                 const apiUrl = `/api/playlist?id=${encodeURIComponent(id)}&limit=${PLAYLIST_PAGE_SIZE}`;
                 const pageUrl = `/playlist.html?id=${encodeURIComponent(id)}`;
+                console.info("Playlist-Ladevorgang gestartet", { playlistId: id });
                 if (apiA) {
                     apiA.href = apiUrl;
                     apiA.textContent = `${location.origin}${apiUrl}`;
@@ -512,11 +521,11 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
                 catch (e) {
                     hideGlobalLoading();
-                    let msg = e instanceof Error ? e.message : String(e);
-                    if (response?.status === 401) {
-                        msg = "Bitte melde dich zuerst mit Spotify an.";
-                    }
-                    alert("Playlist konnte nicht geladen werden: " + msg);
+                    console.error("Playlist konnte nicht geladen werden", e);
+                    const msg = response?.status === 401
+                        ? "Bitte melde dich zuerst mit Spotify an."
+                        : "Playlist konnte nicht geladen werden. Bitte versuche es später erneut.";
+                    alert(msg);
                 }
                 finally {
                     submitting = false;

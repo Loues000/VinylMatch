@@ -360,16 +360,36 @@ function refreshLibraryBadgesLocally(flagMap) {
     }
 }
 
+function openDiscogsPopupSafely() {
+    const loginUrl = "https://www.discogs.com/login";
+    try {
+        const popup = window.open(loginUrl, "_blank", "noopener,noreferrer,width=520,height=720");
+        if (!popup) {
+            alert("Bitte erlaube Popups, um dich bei Discogs anzumelden.");
+            console.warn("Discogs login popup blocked by the browser");
+            return false;
+        }
+        popup.opener = null;
+        popup.focus();
+        console.info("Discogs login popup opened");
+        return true;
+    }
+    catch (error) {
+        console.error("Discogs login popup konnte nicht geöffnet werden", error);
+        alert("Das Discogs-Anmeldefenster konnte nicht geöffnet werden.");
+        return false;
+    }
+}
+
 function setupDiscogsPanel() {
     const connectBtn = document.getElementById("discogs-connect");
     const refreshBtn = document.getElementById("discogs-refresh");
     const disconnectBtn = document.getElementById("discogs-disconnect");
     const popupBtn = document.getElementById("discogs-popup");
     popupBtn?.addEventListener("click", () => {
-        const popup = window.open("https://www.discogs.com/login", "discogs-login", "width=520,height=720");
-        if (popup)
-            popup.focus();
-        pollForDiscogsLogin();
+        const opened = openDiscogsPopupSafely();
+        if (opened)
+            pollForDiscogsLogin();
     });
     connectBtn?.addEventListener("click", () => connectDiscogs());
     refreshBtn?.addEventListener("click", () => {
