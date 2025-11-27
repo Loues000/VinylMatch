@@ -77,6 +77,55 @@ function renderRecents() {
         list.appendChild(card);
     }
 }
+
+const POPULAR_PLAYLISTS = [
+    {
+        id: "37i9dQZF1DXcBWIGoYBM5M",
+        name: "Today's Top Hits",
+        description: "Aktuelle Spotify-Charts",
+        owner: "Spotify",
+        trackCount: 50,
+        coverUrl: "https://charts-images.scdn.co/assets/locale_en/regional/daily/region_global_large.jpg",
+    },
+    {
+        id: "37i9dQZF1DX4JAvHpjipBk",
+        name: "Rock Classics",
+        description: "Zeitlose Rock-Favoriten",
+        owner: "Spotify",
+        trackCount: 100,
+        coverUrl: "https://i.scdn.co/image/ab67706f00000002ca7be4aa69664d1d2b9eb12b",
+    },
+];
+function renderPopular() {
+    const list = document.getElementById("popular-list");
+    const empty = document.querySelector('.sidebar-empty[data-context="popular"]');
+    if (!list || !empty)
+        return;
+    list.textContent = "";
+    if (!POPULAR_PLAYLISTS.length) {
+        empty.classList.remove("hidden");
+        return;
+    }
+    empty.classList.add("hidden");
+    for (const item of POPULAR_PLAYLISTS) {
+        const card = createPlaylistCard({
+            id: item.id,
+            name: item.name,
+            coverUrl: item.coverUrl,
+            owner: item.owner,
+            trackCount: item.trackCount,
+        });
+        const meta = document.createElement("p");
+        meta.className = "sidebar-hint";
+        meta.textContent = item.description || "Beliebte Playlist";
+        card.appendChild(meta);
+        card.addEventListener("click", (event) => {
+            event.preventDefault();
+            loadPlaylistAndNavigate(item.id, { title: item.name });
+        });
+        list.appendChild(card);
+    }
+}
 function toggleTab(targetId) {
     const tabs = document.querySelectorAll(".sidebar-tab");
     tabs.forEach((tab) => {
@@ -95,6 +144,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const path = location.pathname.toLowerCase();
     if (path === "/" || path.endsWith("/home.html")) {
         renderRecents();
+        renderPopular();
         const pageContainer = document.getElementById("home-page");
         const sidebarToggle = document.getElementById("sidebar-toggle");
         const sidebar = document.getElementById("home-sidebar");
@@ -146,6 +196,7 @@ window.addEventListener("DOMContentLoaded", () => {
         window.addEventListener("resize", evaluateSidebar);
         evaluateSidebar();
         const recentTab = document.getElementById("recent-tab");
+        const popularTab = document.getElementById("popular-tab");
         const userTab = document.getElementById("user-tab");
         const userPanel = document.getElementById("user-panel");
         const userList = document.getElementById("user-playlist-list");
@@ -425,6 +476,13 @@ window.addEventListener("DOMContentLoaded", () => {
             recentTab.addEventListener("click", (event) => {
                 event.preventDefault();
                 toggleTab("recent-panel");
+            });
+        }
+        if (popularTab) {
+            popularTab.addEventListener("click", (event) => {
+                event.preventDefault();
+                toggleTab("popular-panel");
+                renderPopular();
             });
         }
         if (userTab) {

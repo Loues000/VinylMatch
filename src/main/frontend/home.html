@@ -30,6 +30,9 @@
       <button id="recent-tab" class="sidebar-tab active" type="button" role="tab" aria-selected="true" aria-controls="recent-panel" data-target="recent-panel">
         Verlauf
       </button>
+      <button id="popular-tab" class="sidebar-tab" type="button" role="tab" aria-selected="false" aria-controls="popular-panel" data-target="popular-panel">
+        Popular
+      </button>
       <button id="user-tab" class="sidebar-tab" type="button" role="tab" aria-selected="false" aria-controls="user-panel" data-target="user-panel" disabled>
         Deine Playlists
       </button>
@@ -38,6 +41,11 @@
     <div class="sidebar-panel" id="recent-panel" role="tabpanel" aria-labelledby="recent-tab">
       <div id="recent-list" class="recent-list"></div>
       <p class="sidebar-empty" data-context="recent">Noch keine zuletzt geöffneten Playlists.</p>
+    </div>
+
+    <div class="sidebar-panel hidden" id="popular-panel" role="tabpanel" aria-labelledby="popular-tab">
+      <div id="popular-list" class="recent-list"></div>
+      <p class="sidebar-empty" data-context="popular">Gerade keine Vorschläge verfügbar.</p>
     </div>
 
     <div class="sidebar-panel hidden" id="user-panel" role="tabpanel" aria-labelledby="user-tab" aria-disabled="true">

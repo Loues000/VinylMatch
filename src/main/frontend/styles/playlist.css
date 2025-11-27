@@ -29,10 +29,28 @@ body {
 
 .playlist-page {
     width: 100%;
-    max-width: 1100px;
+    max-width: 1280px;
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 20px;
+}
+
+.playlist-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 20px;
+    align-items: start;
+}
+
+.playlist-main {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.playlist-sidebar {
+    position: sticky;
+    top: 96px;
 }
 
 /* Playlist Header */
@@ -424,6 +442,8 @@ body {
     border-radius: 16px;
     padding: 20px;
     box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+    position: sticky;
+    top: 0;
 }
 
 .discogs-card__header {
@@ -436,8 +456,38 @@ body {
 .discogs-layout {
     margin-top: 16px;
     display: grid;
-    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-columns: 1fr;
     gap: 14px;
+}
+
+.discogs-tabs {
+    display: inline-flex;
+    gap: 8px;
+    background: #f3f4f6;
+    padding: 6px;
+    border-radius: 12px;
+    margin: 10px 0;
+}
+
+.discogs-tab {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.discogs-tab[aria-selected="true"] {
+    background: #111827;
+    color: #fff;
+}
+
+.discogs-sidebar-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .discogs-chip {
@@ -514,31 +564,33 @@ body {
     margin-top: 12px;
     display: grid;
     gap: 12px;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
 }
 
 .discogs-wishlist__item {
     border: 1px solid rgba(31, 41, 55, 0.12);
     border-radius: 12px;
-    padding: 12px;
-    background: #f8fafc;
-    display: grid;
-    gap: 8px;
+    padding: 6px;
+    background: #0f172a;
+    display: block;
+    box-shadow: 0 10px 16px rgba(15, 23, 42, 0.16);
 }
 
 .discogs-wishlist__item img {
     width: 100%;
     border-radius: 10px;
     object-fit: cover;
-    background: #e5e7eb;
+    background: #111827;
 }
 
-.discogs-wishlist__meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 12px;
-    color: #6b7280;
+.discogs-wishlist__item.cover-only {
+    padding: 0;
+    overflow: hidden;
+}
+
+.discogs-wishlist__item.cover-only img {
+    border-radius: 12px;
+    height: 180px;
 }
 
 .discogs-library {
@@ -570,6 +622,15 @@ body {
 @media (max-width: 900px) {
     body {
         padding: 84px 20px 40px;
+    }
+
+    .playlist-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .playlist-sidebar .discogs-card {
+        position: relative;
+        top: auto;
     }
 
     #playlist-header {

@@ -125,6 +125,14 @@ function updateDiscogsChip(text, online) {
     chip.classList.toggle("offline", !online);
 }
 
+function setDiscogsTab(targetId) {
+    const tabs = document.querySelectorAll(".discogs-tab");
+    tabs.forEach((tab) => {
+        const active = tab.dataset.target === targetId;
+        tab.setAttribute("aria-selected", String(active));
+    });
+}
+
 function renderWishlistGrid(entries, total) {
     const grid = document.getElementById("discogs-wishlist-grid");
     const empty = document.getElementById("discogs-wishlist-empty");
@@ -142,36 +150,18 @@ function renderWishlistGrid(entries, total) {
     for (const item of entries) {
         const safeUrl = safeDiscogsUrl(item.url);
         const safeThumb = safeDiscogsImage(item.thumb);
-        const card = document.createElement("article");
-        card.className = "discogs-wishlist__item";
-        if (safeThumb) {
-            const img = document.createElement("img");
-            img.src = safeThumb;
-            img.alt = item.title || "Discogs Release";
-            card.appendChild(img);
-        }
-        const title = document.createElement("h5");
-        title.textContent = item.title || "Release";
-        card.appendChild(title);
-        const meta = document.createElement("div");
-        meta.className = "discogs-wishlist__meta";
-        const artist = document.createElement("span");
-        artist.textContent = item.artist || "Unbekannt";
-        meta.appendChild(artist);
-        if (item.year) {
-            const year = document.createElement("span");
-            year.textContent = String(item.year);
-            meta.appendChild(year);
-        }
-        card.appendChild(meta);
+        const card = document.createElement(safeUrl ? "a" : "div");
+        card.className = "discogs-wishlist__item cover-only";
         if (safeUrl) {
-            const link = document.createElement("a");
-            link.href = safeUrl;
-            link.target = "_blank";
-            link.rel = "noopener noreferrer";
-            link.textContent = "Auf Discogs öffnen";
-            card.appendChild(link);
+            card.href = safeUrl;
+            card.target = "_blank";
+            card.rel = "noopener noreferrer";
         }
+        card.title = item.title || "Discogs Release";
+        const img = document.createElement("img");
+        img.src = safeThumb || PLACEHOLDER_IMG;
+        img.alt = item.title || "Discogs Release";
+        card.appendChild(img);
         grid.appendChild(card);
     }
 }
@@ -204,6 +194,7 @@ function applyDiscogsUi() {
     if (discogsUiState.loggedIn) {
         login.classList.add("hidden");
         dashboard.classList.remove("hidden");
+        setDiscogsTab("discogs-dashboard");
         updateDiscogsChip("Verbunden", true);
         if (user) {
             user.textContent = discogsUiState.name || discogsUiState.username || "Discogs";
@@ -212,6 +203,7 @@ function applyDiscogsUi() {
     else {
         login.classList.remove("hidden");
         dashboard.classList.add("hidden");
+        setDiscogsTab("discogs-login");
         updateDiscogsChip("Nicht verbunden", false);
     }
 }
@@ -363,15 +355,20 @@ function refreshLibraryBadgesLocally(flagMap) {
 function openDiscogsPopupSafely() {
     const loginUrl = "https://www.discogs.com/login";
     try {
-        const popup = window.open(loginUrl, "_blank", "noopener,noreferrer,width=520,height=720");
-        if (!popup) {
-            alert("Bitte erlaube Popups, um dich bei Discogs anzumelden.");
-            console.warn("Discogs login popup blocked by the browser");
-            return false;
+        const popup = window.open("about:blank", "discogs-login", "noopener,noreferrer,width=520,height=720");
+        if (popup) {
+            popup.opener = null;
+            popup.location.href = loginUrl;
+            popup.focus();
+            console.info("Discogs login popup opened");
+            return true;
         }
-        popup.opener = null;
-        popup.focus();
-        console.info("Discogs login popup opened");
+        const fallback = window.open(loginUrl, "_blank");
+        if (fallback) {
+            console.info("Discogs login opened in new tab as fallback");
+            return true;
+        }
+        window.location.href = loginUrl;
         return true;
     }
     catch (error) {
@@ -386,6 +383,27 @@ function setupDiscogsPanel() {
     const refreshBtn = document.getElementById("discogs-refresh");
     const disconnectBtn = document.getElementById("discogs-disconnect");
     const popupBtn = document.getElementById("discogs-popup");
+    const tabs = document.querySelectorAll(".discogs-tab");
+    const loginPanel = document.getElementById("discogs-login");
+    const wishlistPanel = document.getElementById("discogs-dashboard");
+    tabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+            const target = tab.dataset.target;
+            setDiscogsTab(target || "");
+            if (target === "discogs-login") {
+                loginPanel?.classList.remove("hidden");
+                if (!discogsUiState.loggedIn) {
+                    wishlistPanel?.classList.add("hidden");
+                }
+            }
+            if (target === "discogs-dashboard" && discogsUiState.loggedIn) {
+                loginPanel?.classList.add("hidden");
+                wishlistPanel?.classList.remove("hidden");
+                refreshWishlistPreview();
+            }
+        });
+    });
+    setDiscogsTab(discogsUiState.loggedIn ? "discogs-dashboard" : "discogs-login");
     popupBtn?.addEventListener("click", () => {
         const opened = openDiscogsPopupSafely();
         if (opened)
@@ -755,6 +773,7 @@ function createTrackElement(track, index) {
     wishlistBtn.setAttribute("aria-label", "Zur Discogs-Wunschliste hinzufügen");
     wishlistBtn.href = "#";
     wishlistBtn.classList.add("discogs-action");
+    wishlistBtn.title = "Fügt das erkannte Album deiner Discogs-Wunschliste hinzu.";
     actions.appendChild(wishlistBtn);
     const vendorLinks = buildVendorLinks(track);
     for (const link of vendorLinks) {
