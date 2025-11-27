@@ -41,6 +41,7 @@ public class ApiServer {
     private static volatile String lastAuthSignature = null;
     private static final Map<String, com.hctamlyniv.DiscogsService> DISCOGS_SERVICES = new ConcurrentHashMap<>();
     private static final Map<String, DiscogsSession> DISCOGS_SESSIONS = new ConcurrentHashMap<>();
+    private static final java.util.Set<String> ALLOWED_ORIGINS = buildAllowedOrigins();
     private static final HexFormat HEX_FORMAT = HexFormat.of();
 
     public static void start() throws IOException {
@@ -432,6 +433,11 @@ public class ApiServer {
                     sendError(exchange, 401, "Discogs-Token ungültig oder Zugriff verweigert");
                     return;
                 }
+                String oldSessionId = cookieValue(exchange, "discogs_session");
+                if (oldSessionId != null) {
+                    DISCOGS_SESSIONS.remove(oldSessionId);
+                }
+                DISCOGS_SESSIONS.entrySet().removeIf(entry -> profile.username().equals(entry.getValue().username()));
                 String sessionId = java.util.UUID.randomUUID().toString();
                 DiscogsSession session = new DiscogsSession(sessionId, token, ua, profile.username(), profile.name());
                 DISCOGS_SESSIONS.put(sessionId, session);
@@ -519,7 +525,7 @@ public class ApiServer {
                 String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 Map payload = MAPPER.readValue(body, Map.class);
                 String url = stringValue(payload.get("url"));
-                if (url == null || url.isBlank()) {
+                if (!isDiscogsWebUrl(url)) {
                     sendError(exchange, 400, "Parameter 'url' erforderlich");
                     return;
                 }
@@ -565,7 +571,7 @@ public class ApiServer {
                 }
                 List<String> urls = new ArrayList<>();
                 for (Object o : list) {
-                    if (o instanceof String s && !s.isBlank()) {
+                    if (o instanceof String s && isDiscogsWebUrl(s)) {
                         urls.add(s.trim());
                     }
                 }
@@ -617,6 +623,10 @@ public class ApiServer {
                 String album = stringValue(payload.get("album"));
                 Integer year = intValue(payload.get("year"));
                 String trackTitle = stringValue(payload.get("trackTitle"));
+                if (artist == null && album == null && trackTitle == null) {
+                    sendError(exchange, 400, "Ungültige Anfragedaten");
+                    return;
+                }
                 com.hctamlyniv.DiscogsService discogs = getDiscogsService();
                 if (discogs == null) {
                     sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
@@ -654,7 +664,7 @@ public class ApiServer {
                 String barcode = stringValue(payload.get("barcode"));
                 String url = stringValue(payload.get("url"));
                 String thumb = stringValue(payload.get("thumb"));
-                if (url == null || url.isBlank()) {
+                if (!isDiscogsWebUrl(url)) {
                     sendError(exchange, 400, "Parameter 'url' erforderlich");
                     return;
                 }
@@ -882,9 +892,8 @@ public class ApiServer {
 
     private static void addCorsHeaders(HttpExchange exchange) {
         Headers response = exchange.getResponseHeaders();
-        Headers request = exchange.getRequestHeaders();
-        String origin = request.getFirst("Origin");
-        if (origin != null && !origin.isBlank()) {
+        String origin = resolveAllowedOrigin(exchange);
+        if (origin != null) {
             response.set("Access-Control-Allow-Origin", origin);
             response.set("Vary", "Origin");
             response.set("Access-Control-Allow-Credentials", "true");
@@ -894,15 +903,101 @@ public class ApiServer {
     }
 
     private static void setDiscogsSessionCookie(HttpExchange exchange, String value, int maxAgeSeconds) {
+        String sanitized = (value == null) ? "" : value.replaceAll("[^A-Za-z0-9-]", "");
         StringBuilder cookie = new StringBuilder();
-        cookie.append("discogs_session=").append(value == null ? "" : value);
+        cookie.append("discogs_session=").append(sanitized);
         cookie.append("; Path=/");
-        cookie.append("; Max-Age=").append(maxAgeSeconds);
-        cookie.append("; HttpOnly; SameSite=Lax");
+        cookie.append("; Max-Age=").append(Math.max(0, maxAgeSeconds));
+        cookie.append("; HttpOnly; SameSite=Strict");
         if (isSecureRequest(exchange)) {
             cookie.append("; Secure");
         }
         exchange.getResponseHeaders().add("Set-Cookie", cookie.toString());
+    }
+
+    private static String resolveAllowedOrigin(HttpExchange exchange) {
+        Headers request = exchange.getRequestHeaders();
+        String originHeader = request.getFirst("Origin");
+        String origin = normalizeOrigin(originHeader);
+        if (origin == null) {
+            return null;
+        }
+        String hostHeader = request.getFirst("Host");
+        if (hostHeader != null) {
+            try {
+                java.net.URI uri = java.net.URI.create(origin);
+                String originHost = uri.getHost();
+                if (originHost != null && originHost.equalsIgnoreCase(hostHeader.split(":")[0])) {
+                    return origin;
+                }
+            } catch (Exception ignored) {}
+        }
+        return ALLOWED_ORIGINS.contains(origin) ? origin : null;
+    }
+
+    private static String normalizeOrigin(String origin) {
+        if (origin == null || origin.isBlank()) {
+            return null;
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(origin.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || host == null) {
+                return null;
+            }
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+                return null;
+            }
+            int port = uri.getPort();
+            StringBuilder sb = new StringBuilder();
+            sb.append(scheme.toLowerCase()).append("://").append(host.toLowerCase());
+            if (port > 0 && port != ("https".equalsIgnoreCase(scheme) ? 443 : 80)) {
+                sb.append(":" + port);
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean isDiscogsWebUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(url.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || host == null) {
+                return false;
+            }
+            if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+                return false;
+            }
+            String lowerHost = host.toLowerCase();
+            return lowerHost.equals("discogs.com") || lowerHost.endsWith(".discogs.com");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static java.util.Set<String> buildAllowedOrigins() {
+        java.util.Set<String> allowed = new java.util.HashSet<>();
+        allowed.add("http://localhost:3000");
+        allowed.add("http://127.0.0.1:3000");
+        allowed.add("http://localhost:8888");
+        allowed.add("http://127.0.0.1:8888");
+        String env = System.getenv("CORS_ALLOWED_ORIGINS");
+        if (env != null) {
+            for (String part : env.split(",")) {
+                String normalized = normalizeOrigin(part);
+                if (normalized != null) {
+                    allowed.add(normalized);
+                }
+            }
+        }
+        return allowed;
     }
 
     private static boolean isSecureRequest(HttpExchange exchange) {

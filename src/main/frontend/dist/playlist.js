@@ -25,6 +25,22 @@ const discogsUiState = {
 let libraryRefreshTimer = null;
 
 const trackRegistry = new Map();
+function safeDiscogsUrl(url) {
+    try {
+        const parsed = new URL(url, window.location.origin);
+        const host = parsed.hostname.toLowerCase();
+        if ((parsed.protocol === "https:" || parsed.protocol === "http:") && host.endsWith("discogs.com")) {
+            return parsed.href;
+        }
+        return null;
+    }
+    catch (_a) {
+        return null;
+    }
+}
+function safeDiscogsImage(url) {
+    return safeDiscogsUrl(url);
+}
 function getStoredViewMode() {
     try {
         const stored = localStorage.getItem(VIEW_MODE_KEY);
@@ -152,11 +168,13 @@ function renderWishlistGrid(entries, total) {
     empty.classList.add("hidden");
     count.textContent = total ? `${Math.min(entries.length, total)} von ${total}` : `${entries.length} Einträge`;
     for (const item of entries) {
+        const safeUrl = safeDiscogsUrl(item.url);
+        const safeThumb = safeDiscogsImage(item.thumb);
         const card = document.createElement("article");
         card.className = "discogs-wishlist__item";
-        if (item.thumb) {
+        if (safeThumb) {
             const img = document.createElement("img");
-            img.src = item.thumb;
+            img.src = safeThumb;
             img.alt = item.title || "Discogs Release";
             card.appendChild(img);
         }
@@ -174,9 +192,9 @@ function renderWishlistGrid(entries, total) {
             meta.appendChild(year);
         }
         card.appendChild(meta);
-        if (item.url) {
+        if (safeUrl) {
             const link = document.createElement("a");
-            link.href = item.url;
+            link.href = safeUrl;
             link.target = "_blank";
             link.rel = "noopener noreferrer";
             link.textContent = "Auf Discogs öffnen";
@@ -252,6 +270,7 @@ async function connectDiscogs() {
     const token = input.value.trim();
     if (!token)
         return;
+    input.value = "";
     try {
         const res = await fetch("/api/discogs/login", {
             method: "POST",
@@ -290,7 +309,8 @@ async function refreshLibraryStatuses() {
     }
     const urls = state.aggregated.tracks
         .map((track) => track?.discogsAlbumUrl)
-        .filter((url) => typeof url === "string" && url);
+        .map((url) => (typeof url === "string" ? safeDiscogsUrl(url) : null))
+        .filter((url) => !!url);
     if (!urls.length) {
         refreshLibraryBadgesLocally(null);
         return;
@@ -395,7 +415,8 @@ function buildCurationQueue(tracks) {
 }
 
 function applyManualDiscogsUrl(item, url) {
-    if (!Array.isArray(state.aggregated?.tracks) || !url)
+    const safeUrl = safeDiscogsUrl(url);
+    if (!Array.isArray(state.aggregated?.tracks) || !safeUrl)
         return;
     for (let i = 0; i < state.aggregated.tracks.length; i++) {
         const track = state.aggregated.tracks[i];
@@ -405,15 +426,15 @@ function applyManualDiscogsUrl(item, url) {
         const albumMatch = normalizeForSearch(track.album) === normalizeForSearch(item.album);
         const yearMatch = (typeof track.releaseYear === "number" ? track.releaseYear : null) === (item.releaseYear ?? null);
         if (artistMatch && albumMatch && yearMatch) {
-            track.discogsAlbumUrl = url;
+            track.discogsAlbumUrl = safeUrl;
             track.discogsStatus = "found";
             const key = buildTrackKey(track, i);
             if (key)
                 discogsState.completed.add(key);
-            markDiscogsResult(key, i, url);
+            markDiscogsResult(key, i, safeUrl);
         }
     }
-    item.discogsAlbumUrl = url;
+    item.discogsAlbumUrl = safeUrl;
     scheduleLibraryRefresh(200);
 }
 
@@ -437,7 +458,7 @@ function applyDiscogsResult(result) {
         return;
     const key = typeof result.key === "string" ? result.key : null;
     const index = typeof result.index === "number" ? result.index : null;
-    const url = typeof result.url === "string" && result.url ? result.url : null;
+    const url = typeof result.url === "string" && result.url ? safeDiscogsUrl(result.url) : null;
     if (key) {
         discogsState.requested.delete(key);
         discogsState.completed.add(key);
@@ -678,11 +699,13 @@ function buildVendorLinks(track) {
 
 function createTrackElement(track, index) {
     const key = buildTrackKey(track, index);
-    const initialState = track.discogsAlbumUrl
+    const initialDiscogsUrl = safeDiscogsUrl(track.discogsAlbumUrl);
+    track.discogsAlbumUrl = initialDiscogsUrl;
+    const initialState = initialDiscogsUrl
         ? "found"
         : (track.discogsStatus === "not-found" ? "not-found" : "pending");
-    const initialQuality = track.discogsAlbumUrl
-        ? determineMatchQuality(track.discogsAlbumUrl)
+    const initialQuality = initialDiscogsUrl
+        ? determineMatchQuality(initialDiscogsUrl)
         : (initialState === "not-found"
             ? { level: "poor", label: "Kein Treffer" }
             : { level: "pending", label: "Wird gesucht…" });
@@ -763,15 +786,16 @@ function createTrackElement(track, index) {
         trackDiv.dataset.matchQuality = quality.level;
     };
     const setDiscogsState = (state, url) => {
+        const safeUrl = url ? safeDiscogsUrl(url) : null;
         trackDiv.dataset.discogsState = state;
-        if (state === "found" && url) {
-            const quality = determineMatchQuality(url);
+        if (state === "found" && safeUrl) {
+            const quality = determineMatchQuality(safeUrl);
             updateBadge(quality);
-            track.discogsAlbumUrl = url;
+            track.discogsAlbumUrl = safeUrl;
             track.discogsStatus = "found";
             discogsBtn.classList.remove("inactive", "pending");
             discogsBtn.setAttribute("aria-disabled", "false");
-            discogsBtn.href = url;
+            discogsBtn.href = safeUrl;
             discogsBtn.target = "_blank";
             discogsBtn.rel = "noopener noreferrer";
             discogsBtn.title = quality.level === "good" ? "Auf Discogs ansehen" : "Discogs-Suchergebnis";

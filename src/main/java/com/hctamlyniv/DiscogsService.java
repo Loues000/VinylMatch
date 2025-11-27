@@ -171,14 +171,15 @@ public class DiscogsService {
     }
 
     private void rememberResult(String cacheKey, String url, String barcode) {
-        if (url == null || url.isBlank()) {
+        String safeUrl = sanitizeDiscogsWebUrl(url);
+        if (safeUrl == null) {
             return;
         }
         if (cacheKey != null && !cacheKey.isBlank()) {
-            cache.put(cacheKey, url);
+            cache.put(cacheKey, safeUrl);
         }
         if (barcode != null && !barcode.isBlank()) {
-            barcodeCache.put(barcode, url);
+            barcodeCache.put(barcode, safeUrl);
         }
         persistCache();
     }
@@ -200,6 +201,30 @@ public class DiscogsService {
 
     private String buildCacheKey(String artist, String album, Integer releaseYear) {
         return (artist == null ? "" : artist) + "|" + (album == null ? "" : album) + "|" + (releaseYear == null ? "" : releaseYear);
+    }
+
+    private String sanitizeDiscogsWebUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(url.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || host == null) {
+                return null;
+            }
+            if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+                return null;
+            }
+            String lowerHost = host.toLowerCase();
+            if (!lowerHost.equals("discogs.com") && !lowerHost.endsWith(".discogs.com")) {
+                return null;
+            }
+            return uri.toString();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public Optional<String> peekCachedUri(String artist, String album, Integer releaseYear, String barcode) {
@@ -393,18 +418,27 @@ public class DiscogsService {
             String country = optText(node, "country");
             String format = parseFormats(node.get("format"));
             String uriSuffix = optText(node, "uri");
-            String url = uriSuffix != null ? "https://www.discogs.com" + uriSuffix : null;
+            String url = uriSuffix != null ? sanitizeDiscogsWebUrl("https://www.discogs.com" + uriSuffix) : null;
+            String safeThumb = sanitizeDiscogsWebUrl(thumb);
+            if (url == null) {
+                continue;
+            }
             String artistName = optText(node, "artist");
-            candidates.add(new CurationCandidate(id, title, artistName, year, country, format, thumb, url));
+            candidates.add(new CurationCandidate(id, title, artistName, year, country, format, safeThumb, url));
         }
         return candidates;
     }
 
     public CuratedLink saveCuratedLink(String artist, String album, Integer releaseYear, String trackTitle, String barcode, String url, String thumb) {
+        String safeUrl = sanitizeDiscogsWebUrl(url);
+        if (safeUrl == null) {
+            throw new IllegalArgumentException("Ungültige Discogs-URL");
+        }
+        String safeThumb = sanitizeDiscogsWebUrl(thumb);
         String cacheKey = buildCacheKey(extractPrimaryArtist(artist), album == null ? null : album.trim(), releaseYear);
-        CuratedLink link = new CuratedLink(cacheKey, artist, album, releaseYear, trackTitle, barcode, url, thumb, Instant.now().toString(), "manual");
+        CuratedLink link = new CuratedLink(cacheKey, artist, album, releaseYear, trackTitle, barcode, safeUrl, safeThumb, Instant.now().toString(), "manual");
         curatedLinks.put(cacheKey, link);
-        rememberResult(cacheKey, url, barcode);
+        rememberResult(cacheKey, safeUrl, barcode);
         persistCuratedLinks();
         return link;
     }
@@ -463,7 +497,7 @@ public class DiscogsService {
                         artist = artists.get(0).path("name").asText(null);
                     }
                     Integer year = basic.hasNonNull("year") ? basic.get("year").asInt() : null;
-                    String thumb = basic.path("thumb").asText(null);
+                    String thumb = sanitizeDiscogsWebUrl(basic.path("thumb").asText(null));
                     String uriStr = basic.path("resource_url").asText(null);
                     String webUrl = basic.path("uri").asText(null);
                     Integer releaseId = basic.hasNonNull("id") ? basic.get("id").asInt() : null;
@@ -471,7 +505,10 @@ public class DiscogsService {
                     if (targetUrl != null && targetUrl.startsWith("/")) {
                         targetUrl = "https://www.discogs.com" + targetUrl;
                     }
-                    entries.add(new WishlistEntry(title, artist, year, thumb, targetUrl, releaseId));
+                    String safeTarget = sanitizeDiscogsWebUrl(targetUrl);
+                    if (safeTarget != null) {
+                        entries.add(new WishlistEntry(title, artist, year, thumb, safeTarget, releaseId));
+                    }
                 }
             }
             return new WishlistResult(entries, total);
@@ -497,10 +534,11 @@ public class DiscogsService {
     }
 
     public Optional<Integer> resolveReleaseIdFromUrl(String url) {
-        if (url == null || url.isBlank()) {
+        String normalized = sanitizeDiscogsWebUrl(url);
+        if (normalized == null) {
             return Optional.empty();
         }
-        String lower = url.toLowerCase();
+        String lower = normalized.toLowerCase();
         try {
             if (lower.contains("/release/")) {
                 String[] tokens = lower.split("/release/");

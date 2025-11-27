@@ -8,6 +8,24 @@ const curationState = {
     saving: false,
 };
 
+function safeDiscogsUrl(url) {
+    try {
+        const parsed = new URL(url, window.location.origin);
+        const host = parsed.hostname.toLowerCase();
+        if ((parsed.protocol === "https:" || parsed.protocol === "http:") && host.endsWith("discogs.com")) {
+            return parsed.href;
+        }
+        return null;
+    }
+    catch (_a) {
+        return null;
+    }
+}
+
+function safeDiscogsImage(url) {
+    return safeDiscogsUrl(url);
+}
+
 function select(container, selector) {
     return container?.querySelector(selector);
 }
@@ -89,15 +107,20 @@ function renderCurationAlbum(container, item, placeholderImage) {
 }
 
 function createCandidateCard(container, item, candidate, onCandidateSaved) {
+    const safeUrl = safeDiscogsUrl(candidate.url);
+    const safeThumb = safeDiscogsImage(candidate.thumb);
+    if (!safeUrl) {
+        return null;
+    }
     const card = document.createElement("div");
     card.className = "candidate-card";
     const bar = document.createElement("div");
     bar.className = "candidate-browser";
     const urlLabel = document.createElement("div");
     urlLabel.className = "url";
-    urlLabel.textContent = candidate.url || "ohne URL";
+    urlLabel.textContent = safeUrl || "ohne URL";
     const openLink = document.createElement("a");
-    openLink.href = candidate.url || "#";
+    openLink.href = safeUrl || "#";
     openLink.target = "_blank";
     openLink.rel = "noopener noreferrer";
     openLink.textContent = "Öffnen";
@@ -105,9 +128,9 @@ function createCandidateCard(container, item, candidate, onCandidateSaved) {
     bar.appendChild(openLink);
     const preview = document.createElement("div");
     preview.className = "candidate-preview";
-    if (candidate.thumb) {
+    if (safeThumb) {
         const img = document.createElement("img");
-        img.src = candidate.thumb;
+        img.src = safeThumb;
         img.alt = candidate.title || "Discogs Vorschau";
         preview.appendChild(img);
     }
@@ -167,7 +190,10 @@ function renderCurationCandidates(container, item, candidates, onCandidateSaved)
     if (empty)
         empty.classList.add("hidden");
     for (const candidate of candidates) {
-        grid.appendChild(createCandidateCard(container, item, candidate, onCandidateSaved));
+        const card = createCandidateCard(container, item, candidate, onCandidateSaved);
+        if (card) {
+            grid.appendChild(card);
+        }
     }
 }
 
@@ -207,7 +233,8 @@ async function loadCurationCandidates(container, item) {
 }
 
 async function selectCandidate(container, item, candidate, button, onCandidateSaved) {
-    if (!candidate?.url || curationState.saving)
+    const safeUrl = safeDiscogsUrl(candidate?.url);
+    if (!safeUrl || curationState.saving)
         return;
     curationState.saving = true;
     const original = button.textContent;
@@ -222,8 +249,8 @@ async function selectCandidate(container, item, candidate, button, onCandidateSa
                 album: item.album,
                 year: item.releaseYear,
                 trackTitle: item.trackName,
-                url: candidate.url,
-                thumb: candidate.thumb,
+                url: safeUrl,
+                thumb: safeDiscogsImage(candidate.thumb),
             }),
         });
         if (!res.ok)
