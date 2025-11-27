@@ -188,7 +188,7 @@ function renderWishlistGrid(entries, total) {
 
 async function refreshDiscogsStatus() {
     try {
-        const res = await fetch("/api/discogs/status", { cache: "no-cache" });
+        const res = await fetch("/api/discogs/status", { cache: "no-cache", credentials: "include" });
         if (!res.ok)
             throw new Error("HTTP " + res.status);
         const payload = await res.json();
@@ -232,7 +232,7 @@ async function refreshWishlistPreview() {
         return;
     }
     try {
-        const res = await fetch("/api/discogs/wishlist?limit=12", { cache: "no-cache" });
+        const res = await fetch("/api/discogs/wishlist?limit=12", { cache: "no-cache", credentials: "include" });
         if (!res.ok)
             throw new Error("HTTP " + res.status);
         const payload = await res.json();
@@ -257,6 +257,7 @@ async function connectDiscogs() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ token }),
+            credentials: "include",
         });
         if (!res.ok)
             throw new Error("HTTP " + res.status);
@@ -271,7 +272,7 @@ async function connectDiscogs() {
 
 async function disconnectDiscogs() {
     try {
-        await fetch("/api/discogs/logout", { method: "POST" });
+        await fetch("/api/discogs/logout", { method: "POST", credentials: "include" });
     }
     catch (_) { }
     discogsUiState.loggedIn = false;
@@ -300,6 +301,7 @@ async function refreshLibraryStatuses() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ urls: uniqueUrls }),
+            credentials: "include",
         });
         if (!res.ok)
             throw new Error("HTTP " + res.status);
@@ -496,6 +498,7 @@ async function processDiscogsQueue() {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload),
+                    credentials: "include",
                 });
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
@@ -834,6 +837,7 @@ function createTrackElement(track, index) {
                     releaseYear: track.releaseYear ?? null,
                     track: normalizeForSearch(track.trackName) || track.trackName,
                 }),
+                credentials: "include",
             });
             if (!res.ok)
                 throw new Error(`HTTP ${res.status}`);
@@ -876,6 +880,7 @@ function createTrackElement(track, index) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ url: targetUrl }),
+                credentials: "include",
             });
             if (!res.ok) {
                 throw new Error(`HTTP ${res.status}`);

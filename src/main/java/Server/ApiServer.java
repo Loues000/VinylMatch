@@ -56,7 +56,7 @@ public class ApiServer {
         server.createContext("/api/playlist", exchange -> {
             CacheKey cacheKey = null;
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
                     exchange.sendResponseHeaders(204, -1);
                     return;
@@ -150,7 +150,7 @@ public class ApiServer {
 
         server.createContext("/api/user/playlists", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -240,7 +240,7 @@ public class ApiServer {
         // Discogs-Suche (Batch, asynchron zum Playlist-Laden)
         server.createContext("/api/discogs/batch", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -319,7 +319,7 @@ public class ApiServer {
         // Discogs-Suche (on-demand)
         server.createContext("/api/discogs/search", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -383,7 +383,7 @@ public class ApiServer {
         // Discogs-Session-Status
         server.createContext("/api/discogs/status", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     sendError(exchange, 405, "Nur GET erlaubt");
                     return;
@@ -408,7 +408,7 @@ public class ApiServer {
         // Discogs-Login via User-Token
         server.createContext("/api/discogs/login", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
                     exchange.sendResponseHeaders(204, -1);
                     return;
@@ -435,7 +435,7 @@ public class ApiServer {
                 String sessionId = java.util.UUID.randomUUID().toString();
                 DiscogsSession session = new DiscogsSession(sessionId, token, ua, profile.username(), profile.name());
                 DISCOGS_SESSIONS.put(sessionId, session);
-                exchange.getResponseHeaders().add("Set-Cookie", "discogs_session=" + sessionId + "; Path=/; Max-Age=86400");
+                setDiscogsSessionCookie(exchange, sessionId, 86400);
                 Map<String, Object> response = new HashMap<>();
                 response.put("username", profile.username());
                 response.put("name", profile.name());
@@ -451,7 +451,7 @@ public class ApiServer {
         // Discogs-Logout
         server.createContext("/api/discogs/logout", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
                     exchange.sendResponseHeaders(204, -1);
                     return;
@@ -464,7 +464,7 @@ public class ApiServer {
                 if (sessionId != null) {
                     DISCOGS_SESSIONS.remove(sessionId);
                 }
-                exchange.getResponseHeaders().add("Set-Cookie", "discogs_session=; Path=/; Max-Age=0");
+                setDiscogsSessionCookie(exchange, null, 0);
                 exchange.sendResponseHeaders(204, -1);
             } catch (Exception e) {
                 sendError(exchange, 500, "Fehler beim Discogs-Logout: " + e.getMessage());
@@ -474,7 +474,7 @@ public class ApiServer {
         // Wunschliste abrufen (kleines Preview)
         server.createContext("/api/discogs/wishlist", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     sendError(exchange, 405, "Nur GET erlaubt");
                     return;
@@ -506,7 +506,7 @@ public class ApiServer {
         // Wunschliste hinzufügen
         server.createContext("/api/discogs/wishlist/add", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     sendError(exchange, 405, "Nur POST erlaubt");
                     return;
@@ -546,7 +546,7 @@ public class ApiServer {
         // Besitz-/Wunschlisten-Status für mehrere Releases
         server.createContext("/api/discogs/library-status", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     sendError(exchange, 405, "Nur POST erlaubt");
                     return;
@@ -602,7 +602,7 @@ public class ApiServer {
         // Dev: Curation candidates for manual Discogs link verification
         server.createContext("/api/discogs/curation/candidates", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
                     exchange.sendResponseHeaders(204, -1);
                     return;
@@ -636,7 +636,7 @@ public class ApiServer {
         // Dev: Persist curated Discogs links for better matching
         server.createContext("/api/discogs/curation/save", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
                     exchange.sendResponseHeaders(204, -1);
                     return;
@@ -677,7 +677,7 @@ public class ApiServer {
         // Auth-Status
         server.createContext("/api/auth/status", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -701,7 +701,7 @@ public class ApiServer {
         // Login starten (liefert Authorization-URL)
         server.createContext("/api/auth/login", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -726,7 +726,7 @@ public class ApiServer {
         // Logout
         server.createContext("/api/auth/logout", exchange -> {
             try {
-                addCorsHeaders(exchange.getResponseHeaders());
+                addCorsHeaders(exchange);
                 String method = exchange.getRequestMethod();
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     exchange.sendResponseHeaders(204, -1);
@@ -870,8 +870,8 @@ public class ApiServer {
             for (String part : parts) {
                 int idx = part.indexOf('=');
                 if (idx <= 0) continue;
-                String key = part.substring(0, idx);
-                String value = part.substring(idx + 1);
+                String key = part.substring(0, idx).trim();
+                String value = part.substring(idx + 1).trim();
                 if (name.equals(key)) {
                     return value;
                 }
@@ -880,10 +880,38 @@ public class ApiServer {
         return null;
     }
 
-    private static void addCorsHeaders(Headers h) {
-        h.add("Access-Control-Allow-Origin", "*");
-        h.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        h.add("Access-Control-Allow-Headers", "Content-Type");
+    private static void addCorsHeaders(HttpExchange exchange) {
+        Headers response = exchange.getResponseHeaders();
+        Headers request = exchange.getRequestHeaders();
+        String origin = request.getFirst("Origin");
+        if (origin != null && !origin.isBlank()) {
+            response.set("Access-Control-Allow-Origin", origin);
+            response.set("Vary", "Origin");
+            response.set("Access-Control-Allow-Credentials", "true");
+        }
+        response.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response.set("Access-Control-Allow-Headers", "Content-Type");
+    }
+
+    private static void setDiscogsSessionCookie(HttpExchange exchange, String value, int maxAgeSeconds) {
+        StringBuilder cookie = new StringBuilder();
+        cookie.append("discogs_session=").append(value == null ? "" : value);
+        cookie.append("; Path=/");
+        cookie.append("; Max-Age=").append(maxAgeSeconds);
+        cookie.append("; HttpOnly; SameSite=Lax");
+        if (isSecureRequest(exchange)) {
+            cookie.append("; Secure");
+        }
+        exchange.getResponseHeaders().add("Set-Cookie", cookie.toString());
+    }
+
+    private static boolean isSecureRequest(HttpExchange exchange) {
+        String proto = exchange.getRequestHeaders().getFirst("X-Forwarded-Proto");
+        if (proto != null && proto.equalsIgnoreCase("https")) {
+            return true;
+        }
+        String origin = exchange.getRequestHeaders().getFirst("Origin");
+        return origin != null && origin.toLowerCase().startsWith("https");
     }
 
     private static String contentTypeFor(Path file) {
