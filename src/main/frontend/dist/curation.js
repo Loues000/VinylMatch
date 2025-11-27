@@ -1,4 +1,10 @@
-const DEFAULT_TEMPLATE = "/curation.html";
+import { injectHeader } from "./common/header.js";
+import { buildCurationQueue, normalizeForSearch, primaryArtist } from "./common/playlist-utils.js";
+import { readCachedPlaylist, storePlaylistChunk } from "./storage.js";
+
+const DEFAULT_TEMPLATE = "";
+const PAGE_SIZE = 50;
+const PLACEHOLDER_IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
 const curationState = {
     queue: [],
@@ -6,6 +12,13 @@ const curationState = {
     candidates: [],
     loading: false,
     saving: false,
+};
+
+const pageState = {
+    id: null,
+    aggregated: null,
+    curation: null,
+    loading: false,
 };
 
 function safeDiscogsUrl(url) {
@@ -102,6 +115,12 @@ function renderCurationAlbum(container, item, placeholderImage) {
     meta.appendChild(title);
     meta.appendChild(artist);
     meta.appendChild(hint);
+    if (Array.isArray(item.missing) && item.missing.length) {
+        const missing = document.createElement("div");
+        missing.className = "missing";
+        missing.textContent = `Fehlend: ${item.missing.join(" · ")}`;
+        meta.appendChild(missing);
+    }
     album.appendChild(img);
     album.appendChild(meta);
 }
@@ -215,6 +234,8 @@ async function loadCurationCandidates(container, item) {
                 album: item.album,
                 year: item.releaseYear,
                 trackTitle: item.trackName,
+                preferVinyl: true,
+                format: "vinyl",
             }),
         });
         if (!res.ok)
@@ -320,4 +341,149 @@ async function initCurationPanel(options = {}) {
     };
 }
 
+function showLoading(message = "Playlist wird geladen …") {
+    const overlay = document.getElementById("global-loading");
+    const text = document.getElementById("global-loading-text");
+    overlay?.classList.remove("hidden");
+    overlay?.classList.add("visible");
+    if (text)
+        text.textContent = message;
+}
+
+function hideLoading() {
+    const overlay = document.getElementById("global-loading");
+    overlay?.classList.remove("visible");
+    overlay?.classList.add("hidden");
+}
+
+
+function applyManualDiscogsUrl(item, url) {
+    const safeUrl = typeof url === "string" && url ? url : null;
+    if (!Array.isArray(pageState.aggregated?.tracks) || !safeUrl)
+        return;
+    for (const track of pageState.aggregated.tracks) {
+        if (!track)
+            continue;
+        const artistMatch = normalizeForSearch(primaryArtist(track.artist) || track.artist) === normalizeForSearch(item.artist);
+        const albumMatch = normalizeForSearch(track.album) === normalizeForSearch(item.album);
+        const yearMatch = (typeof track.releaseYear === "number" ? track.releaseYear : null) === (item.releaseYear ?? null);
+        if (artistMatch && albumMatch && yearMatch) {
+            track.discogsAlbumUrl = safeUrl;
+        }
+    }
+    item.discogsAlbumUrl = safeUrl;
+    pageState.curation?.refreshQueue();
+}
+
+function updateSummary() {
+    const title = document.getElementById("curation-summary-title");
+    const details = document.getElementById("curation-summary-details");
+    if (!title || !details)
+        return;
+    if (!pageState.aggregated) {
+        title.textContent = "Noch nichts geladen";
+        details.textContent = "Füge oben eine Playlist hinzu, um den Curation-Modus zu starten.";
+        return;
+    }
+    title.textContent = pageState.aggregated.playlistName || "Playlist";
+    const trackCount = Array.isArray(pageState.aggregated.tracks) ? pageState.aggregated.tracks.length : 0;
+    details.textContent = `${trackCount} Titel geladen · nur unvollständige Alben in der Queue`;
+}
+
+async function fetchPlaylist(id) {
+    let offset = 0;
+    let aggregated = null;
+    let hasMore = true;
+    while (hasMore) {
+        const query = new URLSearchParams({ id, offset: String(offset), limit: String(PAGE_SIZE) });
+        const res = await fetch(`/api/playlist?${query.toString()}`, { cache: "no-cache" });
+        if (!res.ok)
+            throw new Error(`HTTP ${res.status}`);
+        const payload = await res.json();
+        aggregated = storePlaylistChunk(id, payload, aggregated ?? undefined);
+        hasMore = !!aggregated?.hasMore;
+        offset = typeof aggregated?.nextOffset === "number" ? aggregated.nextOffset : (offset + PAGE_SIZE);
+    }
+    return aggregated;
+}
+
+function getPlaylistIdFromUrl(value) {
+    if (!value)
+        return null;
+    const trimmed = value.trim();
+    const idPattern = /^[A-Za-z0-9]{22}$/;
+    if (idPattern.test(trimmed))
+        return trimmed;
+    try {
+        const parsed = new URL(trimmed);
+        const hostname = parsed.hostname.toLowerCase();
+        const isSpotifyHost = hostname === "spotify.com" || hostname === "open.spotify.com" || hostname === "play.spotify.com" || hostname === "www.spotify.com" || hostname.endsWith(".spotify.com");
+        if (!isSpotifyHost)
+            return null;
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
+            return null;
+        const segments = parsed.pathname.split("/").filter(Boolean);
+        if (segments[0] !== "playlist" || !segments[1] || !idPattern.test(segments[1]))
+            return null;
+        return segments[1].split("?")[0];
+    }
+    catch (_a) {
+        return null;
+    }
+}
+
+async function loadPlaylistFromInput() {
+    if (pageState.loading)
+        return;
+    const textarea = document.getElementById("curation-playlist-url");
+    const id = textarea ? getPlaylistIdFromUrl(textarea.value.trim()) : null;
+    if (!id) {
+        alert("Bitte füge eine gültige Spotify-Playlist ein.");
+        return;
+    }
+    console.info("Playlist-Ladevorgang gestartet", { playlistId: id });
+    pageState.loading = true;
+    showLoading("Playlist wird geladen …");
+    try {
+        pageState.id = id;
+        pageState.aggregated = await fetchPlaylist(id);
+        updateSummary();
+        pageState.curation?.refreshQueue();
+    }
+    catch (e) {
+        console.error("Playlist konnte nicht geladen werden", e);
+        alert("Playlist konnte nicht geladen werden. Bitte versuche es später erneut.");
+    }
+    finally {
+        hideLoading();
+        pageState.loading = false;
+    }
+}
+
+async function initCurationPage() {
+    await injectHeader();
+    updateSummary();
+    pageState.curation = await initCurationPanel({
+        placeholderImage: PLACEHOLDER_IMG,
+        buildQueue: () => buildCurationQueue(pageState.aggregated?.tracks),
+        onCandidateSaved: (item, url) => applyManualDiscogsUrl(item, url),
+        containerId: "curation-panel-container",
+    });
+    const cached = readCachedPlaylist(null);
+    if (cached?.data) {
+        pageState.id = cached.id;
+        pageState.aggregated = cached.data;
+        updateSummary();
+        pageState.curation?.refreshQueue();
+    }
+    const btn = document.getElementById("curation-use-link");
+    btn?.addEventListener("click", () => loadPlaylistFromInput());
+}
+
 export { initCurationPanel };
+
+window.addEventListener("DOMContentLoaded", () => {
+    if (document.getElementById("curation-page")) {
+        initCurationPage().catch((error) => console.warn("Curation-Seite konnte nicht initialisiert werden", error));
+    }
+});

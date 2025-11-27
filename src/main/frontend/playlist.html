@@ -10,7 +10,6 @@
 
     <!-- Restliche Playlist-Seite Styles -->
     <link rel="stylesheet" href="/styles/playlist.css">
-    <link rel="stylesheet" href="/styles/curation.css">
 </head>
 <body>
 <div id="header"></div>
@@ -36,45 +35,52 @@
                 <div>
                     <p class="eyebrow">Discogs</p>
                     <h2 id="discogs-heading">Wunschliste &amp; Sammlung</h2>
-                    <p class="muted">Verbinde deinen Discogs-Account mit deinem persönlichen User-Token, um zu sehen, welche Playlist-Alben du bereits besitzt oder direkt auf die Wunschliste setzen möchtest.</p>
+                    <p class="muted">Öffne das Discogs-Login im Popup oder nutze deinen Token, um in der Seitenleiste schnell Wunschliste und Library zu steuern.</p>
                 </div>
                 <div class="discogs-chip" id="discogs-status">Nicht verbunden</div>
             </div>
 
-            <div class="discogs-login" id="discogs-login">
-                <label for="discogs-token">Discogs User-Token</label>
-                <div class="discogs-login__row">
-                    <input id="discogs-token" type="password" placeholder="z. B. DjYtMa..." autocomplete="off" />
-                    <button type="button" class="btn" id="discogs-connect">Verbinden</button>
-                </div>
-                <p class="hint">Den Token findest du in deinen Discogs-Einstellungen unter &quot;Developer&quot;. Dein Token bleibt nur lokal in dieser Sitzung.</p>
-            </div>
-
-            <div class="discogs-dashboard hidden" id="discogs-dashboard">
-                <div class="discogs-summary">
-                    <div>
-                        <p class="eyebrow">Verbunden als</p>
-                        <h3 id="discogs-user"></h3>
+            <div class="discogs-layout">
+                <div class="discogs-login" id="discogs-login">
+                    <div class="discogs-login__intro">
+                        <p class="eyebrow">Login-Fenster</p>
+                        <p class="muted">Discogs-Popup öffnen, kurz mit Nutzername &amp; Passwort anmelden und die Seitenleiste hier aktualisieren.</p>
+                        <button type="button" class="btn ghost" id="discogs-popup">Discogs Login öffnen</button>
                     </div>
-                    <div class="discogs-actions">
-                        <button type="button" class="btn ghost" id="discogs-refresh">Aktualisieren</button>
-                        <button type="button" class="btn danger" id="discogs-disconnect">Trennen</button>
+                    <div class="discogs-token">
+                        <label for="discogs-token">Alternativ: Discogs User-Token</label>
+                        <div class="discogs-login__row">
+                            <input id="discogs-token" type="password" placeholder="z. B. DjYtMa..." autocomplete="off" />
+                            <button type="button" class="btn" id="discogs-connect">Verbinden</button>
+                        </div>
+                        <p class="hint">Den Token findest du in deinen Discogs-Einstellungen unter &quot;Developer&quot;. Dein Token bleibt nur lokal in dieser Sitzung.</p>
                     </div>
                 </div>
 
-                <div class="discogs-wishlist">
-                    <div class="discogs-wishlist__header">
-                        <h4>Deine Wunschliste</h4>
-                        <p class="muted" id="discogs-wishlist-count"></p>
+                <div class="discogs-dashboard hidden" id="discogs-dashboard">
+                    <div class="discogs-summary">
+                        <div>
+                            <p class="eyebrow">Verbunden als</p>
+                            <h3 id="discogs-user"></h3>
+                        </div>
+                        <div class="discogs-actions">
+                            <button type="button" class="btn ghost" id="discogs-refresh">Aktualisieren</button>
+                            <button type="button" class="btn danger" id="discogs-disconnect">Trennen</button>
+                        </div>
                     </div>
-                    <div class="discogs-wishlist__grid" id="discogs-wishlist-grid"></div>
-                    <p class="muted" id="discogs-wishlist-empty">Noch keine Wunschliste geladen.</p>
+
+                    <div class="discogs-wishlist">
+                        <div class="discogs-wishlist__header">
+                            <h4>Deine Wunschliste</h4>
+                            <p class="muted" id="discogs-wishlist-count"></p>
+                        </div>
+                        <div class="discogs-wishlist__grid" id="discogs-wishlist-grid"></div>
+                        <p class="muted" id="discogs-wishlist-empty">Noch keine Wunschliste geladen.</p>
+                    </div>
                 </div>
             </div>
         </div>
     </section>
-
-    <div id="curation-panel-container" data-template="/curation.html"></div>
 
     <div id="playlist" class="playlist-tracks" aria-live="polite">Loading...</div>
 

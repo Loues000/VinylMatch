@@ -1,4 +1,5 @@
 import { initCurationPanel } from "./curation.js";
+import { buildAlbumKey, buildCurationQueue, normalizeForSearch, primaryArtist } from "./common/playlist-utils.js";
 import { readCachedPlaylist, storePlaylistChunk } from "./storage.js";
 const PLACEHOLDER_IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const VIEW_MODE_KEY = "vm:playlistViewMode";
@@ -21,6 +22,7 @@ const discogsUiState = {
     wishlist: [],
     statuses: new Map(),
 };
+let discogsLoginPoll = null;
 
 let libraryRefreshTimer = null;
 
@@ -64,36 +66,6 @@ function normalizeKeyPart(value) {
         return "";
     }
     return value.toString().trim().toLowerCase();
-}
-
-function stripBracketedContent(value) {
-    if (!value)
-        return "";
-    return value
-        .replace(/\s*\([^)]*\)/g, "")
-        .replace(/\s*\[[^\]]*\]/g, "")
-        .replace(/\s*\{[^}]*\}/g, "")
-        .trim();
-}
-
-function removeMarketingSuffix(value) {
-    if (!value)
-        return "";
-    return value.replace(/\s*-\s*(remaster(ed)?|deluxe|expanded|anniversary|edition|remix|reissue)\b.*$/i, "").trim();
-}
-
-function primaryArtist(artist) {
-    if (!artist)
-        return "";
-    const tokens = artist.split(/\s*(?:,|;|\/|&|\+|\band\b|\s+(?:feat\.?|featuring|ft\.?|with|x)\s+)\s*/i);
-    const candidate = tokens[0]?.trim();
-    return (candidate && candidate.length ? candidate : artist).trim();
-}
-
-function normalizeForSearch(value) {
-    if (!value)
-        return "";
-    return removeMarketingSuffix(stripBracketedContent(value.replace(/&/g, "and")));
 }
 
 function buildTrackKey(track, index) {
@@ -263,6 +235,26 @@ async function refreshWishlistPreview() {
     }
 }
 
+function pollForDiscogsLogin(timeoutMs = 20000, intervalMs = 1500) {
+    if (discogsLoginPoll) {
+        window.clearInterval(discogsLoginPoll);
+    }
+    const start = Date.now();
+    discogsLoginPoll = window.setInterval(async () => {
+        await refreshDiscogsStatus();
+        if (discogsUiState.loggedIn) {
+            window.clearInterval(discogsLoginPoll);
+            discogsLoginPoll = null;
+            await refreshWishlistPreview();
+            scheduleLibraryRefresh(200);
+        }
+        else if (Date.now() - start > timeoutMs) {
+            window.clearInterval(discogsLoginPoll);
+            discogsLoginPoll = null;
+        }
+    }, Math.max(750, intervalMs));
+}
+
 async function connectDiscogs() {
     const input = document.getElementById("discogs-token");
     if (!(input instanceof HTMLInputElement))
@@ -368,10 +360,37 @@ function refreshLibraryBadgesLocally(flagMap) {
     }
 }
 
+function openDiscogsPopupSafely() {
+    const loginUrl = "https://www.discogs.com/login";
+    try {
+        const popup = window.open(loginUrl, "_blank", "noopener,noreferrer,width=520,height=720");
+        if (!popup) {
+            alert("Bitte erlaube Popups, um dich bei Discogs anzumelden.");
+            console.warn("Discogs login popup blocked by the browser");
+            return false;
+        }
+        popup.opener = null;
+        popup.focus();
+        console.info("Discogs login popup opened");
+        return true;
+    }
+    catch (error) {
+        console.error("Discogs login popup konnte nicht geöffnet werden", error);
+        alert("Das Discogs-Anmeldefenster konnte nicht geöffnet werden.");
+        return false;
+    }
+}
+
 function setupDiscogsPanel() {
     const connectBtn = document.getElementById("discogs-connect");
     const refreshBtn = document.getElementById("discogs-refresh");
     const disconnectBtn = document.getElementById("discogs-disconnect");
+    const popupBtn = document.getElementById("discogs-popup");
+    popupBtn?.addEventListener("click", () => {
+        const opened = openDiscogsPopupSafely();
+        if (opened)
+            pollForDiscogsLogin();
+    });
     connectBtn?.addEventListener("click", () => connectDiscogs());
     refreshBtn?.addEventListener("click", () => {
         refreshWishlistPreview();
@@ -379,39 +398,6 @@ function setupDiscogsPanel() {
     });
     disconnectBtn?.addEventListener("click", () => disconnectDiscogs());
     refreshDiscogsStatus().then(() => refreshWishlistPreview()).then(() => scheduleLibraryRefresh(200));
-}
-
-function buildCurationQueue(tracks) {
-    if (!Array.isArray(tracks)) {
-        return [];
-    }
-    const seen = new Set();
-    const queue = [];
-    for (const track of tracks) {
-        if (!track || !track.album)
-            continue;
-        const artist = primaryArtist(track.artist) || track.artist;
-        const normArtist = normalizeForSearch(artist);
-        const normAlbum = normalizeForSearch(track.album);
-        const year = typeof track.releaseYear === "number" ? track.releaseYear : null;
-        const key = `${normArtist}|${normAlbum}|${year ?? ""}`;
-        if (seen.has(key))
-            continue;
-        seen.add(key);
-        queue.push({
-            artist: artist,
-            album: track.album,
-            releaseYear: year,
-            trackName: track.trackName,
-            coverUrl: track.coverUrl,
-            discogsAlbumUrl: track.discogsAlbumUrl,
-        });
-    }
-    return queue.sort((a, b) => {
-        const aWeight = a.discogsAlbumUrl ? 1 : 0;
-        const bWeight = b.discogsAlbumUrl ? 1 : 0;
-        return aWeight - bWeight;
-    });
 }
 
 function applyManualDiscogsUrl(item, url) {
