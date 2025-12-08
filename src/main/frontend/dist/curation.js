@@ -35,6 +35,19 @@ function safeDiscogsUrl(url) {
     }
 }
 
+function safeHttpUrl(url) {
+    try {
+        const parsed = new URL(url, window.location.origin);
+        if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+            return parsed.href;
+        }
+        return null;
+    }
+    catch (_a) {
+        return null;
+    }
+}
+
 function safeDiscogsImage(url) {
     return safeDiscogsUrl(url);
 }
@@ -126,8 +139,10 @@ function renderCurationAlbum(container, item, placeholderImage) {
 }
 
 function createCandidateCard(container, item, candidate, onCandidateSaved) {
-    const safeUrl = safeDiscogsUrl(candidate.url);
-    const safeThumb = safeDiscogsImage(candidate.thumb);
+    const source = candidate.source || "Discogs";
+    const isDiscogs = source.toLowerCase().includes("discogs");
+    const safeUrl = isDiscogs ? safeDiscogsUrl(candidate.url) : safeHttpUrl(candidate.url);
+    const safeThumb = isDiscogs ? safeDiscogsImage(candidate.thumb) : safeHttpUrl(candidate.thumb) || candidate.thumb;
     if (!safeUrl) {
         return null;
     }
@@ -135,6 +150,9 @@ function createCandidateCard(container, item, candidate, onCandidateSaved) {
     card.className = "candidate-card";
     const bar = document.createElement("div");
     bar.className = "candidate-browser";
+    const origin = document.createElement("span");
+    origin.className = "candidate-source";
+    origin.textContent = source;
     const urlLabel = document.createElement("div");
     urlLabel.className = "url";
     urlLabel.textContent = safeUrl || "ohne URL";
@@ -143,6 +161,7 @@ function createCandidateCard(container, item, candidate, onCandidateSaved) {
     openLink.target = "_blank";
     openLink.rel = "noopener noreferrer";
     openLink.textContent = "Öffnen";
+    bar.appendChild(origin);
     bar.appendChild(urlLabel);
     bar.appendChild(openLink);
     const preview = document.createElement("div");
@@ -182,9 +201,14 @@ function createCandidateCard(container, item, candidate, onCandidateSaved) {
     actions.className = "candidate-actions";
     const selectButton = document.createElement("button");
     selectButton.type = "button";
-    selectButton.className = "btn";
-    selectButton.textContent = "Als korrekt sichern";
-    selectButton.addEventListener("click", () => selectCandidate(container, item, candidate, selectButton, onCandidateSaved));
+    selectButton.className = isDiscogs ? "btn" : "btn ghost";
+    selectButton.textContent = isDiscogs ? "Als korrekt sichern" : "Im Browser öffnen";
+    if (isDiscogs) {
+        selectButton.addEventListener("click", () => selectCandidate(container, item, candidate, selectButton, onCandidateSaved));
+    }
+    else {
+        selectButton.addEventListener("click", () => window.open(safeUrl, "_blank", "noopener"));
+    }
     actions.appendChild(selectButton);
     card.appendChild(bar);
     card.appendChild(preview);
@@ -241,7 +265,50 @@ async function loadCurationCandidates(container, item) {
         if (!res.ok)
             throw new Error("HTTP " + res.status);
         const payload = await res.json();
-        return Array.isArray(payload?.candidates) ? payload.candidates : [];
+        const discogsCandidates = Array.isArray(payload?.candidates)
+            ? payload.candidates.slice(0, 3)
+            : [];
+        const normalizedDiscogs = discogsCandidates.map((candidate, index) => ({
+            ...candidate,
+            source: index === 0 ? "Discogs (Vinyl)" : index === 1 ? "Discogs (LP)" : "Discogs (Alt)",
+        }));
+        const query = [item.artist, item.album].filter(Boolean).join(" ");
+        const searchTerm = encodeURIComponent(`${query} vinyl`);
+        const storeCandidates = [
+            {
+                source: "Discogs (Google)",
+                url: `https://www.google.com/search?q=${encodeURIComponent("site:discogs.com " + query)}`,
+                title: item.album || "Discogs Suche",
+                thumb: item.coverUrl,
+                artist: item.artist,
+                year: item.releaseYear,
+            },
+            {
+                source: "HHV",
+                url: `https://www.google.com/search?q=${encodeURIComponent("site:hhv.de " + query + " vinyl")}`,
+                title: "HHV Ergebnis",
+                thumb: item.coverUrl,
+                artist: item.artist,
+                year: item.releaseYear,
+            },
+            {
+                source: "JPC",
+                url: `https://www.google.com/search?q=${encodeURIComponent("site:jpc.de " + query + " vinyl")}`,
+                title: "JPC Ergebnis",
+                thumb: item.coverUrl,
+                artist: item.artist,
+                year: item.releaseYear,
+            },
+            {
+                source: "Amazon",
+                url: `https://www.google.com/search?q=${encodeURIComponent("site:amazon.de " + searchTerm)}`,
+                title: "Amazon Ergebnis",
+                thumb: item.coverUrl,
+                artist: item.artist,
+                year: item.releaseYear,
+            },
+        ];
+        return [...normalizedDiscogs, ...storeCandidates];
     }
     catch (e) {
         console.warn("Konnte Curation-Kandidaten nicht laden", e);

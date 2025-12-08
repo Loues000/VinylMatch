@@ -203,6 +203,12 @@ body {
     color: var(--muted);
 }
 
+.sidebar-hint {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
 /* Main */
 main {
     flex: 1;
