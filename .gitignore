@@ -37,8 +37,12 @@ build/
 ### Mac OS ###
 .DS_Store
 
+# Local tools (downloaded Maven, etc.)
+.tools/
+
 # IDE-Dateien
 .idea/
+.qodo/
 *.iml
 
 # Build/Dependency
@@ -46,8 +50,20 @@ node_modules/
 target/
 src/main/frontend/bin/
 
+# Runtime cache (generated)
+/cache/
+
 # Spotify-Zugangsdaten nicht pushen
 spotify.properties
+spotify.properties.txt
 spotify.tokens
 /project_structure.txt
-/spotify.properties.txt
+
+# Local config (keep example files committed)
+config/vendors.json
+
+# Environment files with secrets (NEVER commit these!)
+.env
+.env.local
+.env.*.local
+*.env

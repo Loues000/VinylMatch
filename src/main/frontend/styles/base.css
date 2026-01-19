@@ -1,0 +1,341 @@
+/**
+ * VinylMatch Design System
+ * A warm, analog-inspired design language for vinyl collectors
+ */
+
+/* ============================================================================
+   Google Fonts Import
+   ============================================================================ */
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap');
+
+/* ============================================================================
+   Design Tokens - Light Mode
+   ============================================================================ */
+:root {
+    /* Typography */
+    --font-display: 'DM Serif Display', Georgia, serif;
+    --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+    
+    /* Core Colors - Warm Vinyl Palette */
+    --color-vinyl-black: #1a1a1a;
+    --color-vinyl-groove: #2d2d2d;
+    --color-vinyl-label: #d4a574;
+    --color-vinyl-label-dark: #b8956a;
+    --color-vintage-cream: #faf8f5;
+    --color-vintage-paper: #f5f2ed;
+    --color-vintage-tan: #e8e2d9;
+    
+    /* Accent Colors */
+    --color-amber: #f59e0b;
+    --color-amber-dark: #d97706;
+    --color-amber-light: #fbbf24;
+    --color-rust: #c2410c;
+    --color-teal: #0d9488;
+    --color-spotify-green: #1DB954;
+    
+    /* Semantic Colors */
+    --bg-primary: var(--color-vintage-cream);
+    --bg-secondary: var(--color-vintage-paper);
+    --bg-card: #ffffff;
+    --bg-elevated: #ffffff;
+    --bg-overlay: rgba(26, 26, 26, 0.85);
+    
+    --text-primary: var(--color-vinyl-black);
+    --text-secondary: #525252;
+    --text-muted: #737373;
+    --text-inverse: #ffffff;
+    
+    --border-subtle: rgba(26, 26, 26, 0.08);
+    --border-default: rgba(26, 26, 26, 0.12);
+    --border-strong: rgba(26, 26, 26, 0.2);
+    
+    /* Accent mapping */
+    --accent: var(--color-amber);
+    --accent-hover: var(--color-amber-dark);
+    --accent-soft: rgba(245, 158, 11, 0.12);
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(26, 26, 26, 0.05);
+    --shadow-md: 0 4px 12px rgba(26, 26, 26, 0.08);
+    --shadow-lg: 0 12px 32px rgba(26, 26, 26, 0.12);
+    --shadow-xl: 0 24px 48px rgba(26, 26, 26, 0.16);
+    --shadow-glow: 0 0 24px rgba(245, 158, 11, 0.3);
+    
+    /* Radii */
+    --radius-sm: 6px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 9999px;
+    
+    /* Transitions */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.25s ease;
+    --transition-slow: 0.4s ease;
+}
+
+/* ============================================================================
+   Design Tokens - Dark Mode
+   ============================================================================ */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #121212;
+        --bg-secondary: #1a1a1a;
+        --bg-card: #1e1e1e;
+        --bg-elevated: #252525;
+        --bg-overlay: rgba(0, 0, 0, 0.9);
+        
+        --text-primary: #f5f5f5;
+        --text-secondary: #a3a3a3;
+        --text-muted: #737373;
+        --text-inverse: #1a1a1a;
+        
+        --border-subtle: rgba(255, 255, 255, 0.06);
+        --border-default: rgba(255, 255, 255, 0.1);
+        --border-strong: rgba(255, 255, 255, 0.16);
+        
+        --accent-soft: rgba(245, 158, 11, 0.16);
+        
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+        --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.4);
+        --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.5);
+    }
+}
+
+/* ============================================================================
+   CSS Reset & Base Styles
+   ============================================================================ */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-body);
+    font-weight: 400;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    line-height: 1.2;
+    margin: 0;
+}
+
+/* ============================================================================
+   Utility Classes
+   ============================================================================ */
+.hidden {
+    display: none !important;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ============================================================================
+   Component: Buttons
+   ============================================================================ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 24px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    background: linear-gradient(135deg, var(--color-vinyl-black) 0%, var(--color-vinyl-groove) 100%);
+    color: var(--text-inverse);
+    box-shadow: var(--shadow-md);
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn.primary {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+    color: var(--color-vinyl-black);
+}
+
+.btn.ghost {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    box-shadow: none;
+}
+
+.btn.ghost:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+
+.btn.danger {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+/* ============================================================================
+   Component: Cards
+   ============================================================================ */
+.card {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-md);
+}
+
+/* ============================================================================
+   Component: Loading Overlay
+   ============================================================================ */
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-overlay);
+    color: var(--text-inverse);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    z-index: 1200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-normal);
+}
+
+.loading-overlay.visible {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.loading-overlay .spinner {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--accent);
+    animation: spin 1s linear infinite;
+}
+
+.loading-overlay p {
+    font-family: var(--font-display);
+    font-size: 18px;
+    margin: 0;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   Component: Vinyl Record Decoration
+   ============================================================================ */
+.vinyl-record {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: 
+        radial-gradient(circle at center, transparent 18%, var(--color-vinyl-black) 19%, var(--color-vinyl-black) 20%, transparent 21%),
+        radial-gradient(circle at center, transparent 38%, var(--color-vinyl-groove) 39%, var(--color-vinyl-groove) 40%, transparent 41%),
+        radial-gradient(circle at center, transparent 58%, var(--color-vinyl-black) 59%, var(--color-vinyl-black) 60%, transparent 61%),
+        radial-gradient(circle at center, transparent 78%, var(--color-vinyl-groove) 79%, var(--color-vinyl-groove) 80%, transparent 81%),
+        conic-gradient(from 0deg, var(--color-vinyl-black) 0deg, var(--color-vinyl-groove) 10deg, var(--color-vinyl-black) 20deg);
+    box-shadow: 
+        inset 0 0 30px rgba(0, 0, 0, 0.5),
+        var(--shadow-xl);
+}
+
+.vinyl-record::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 35%;
+    height: 35%;
+    border-radius: 50%;
+    background: var(--color-vinyl-label);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.vinyl-record::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8%;
+    height: 8%;
+    border-radius: 50%;
+    background: var(--color-vinyl-black);
+}
+
+/* ============================================================================
+   Component: Eyebrow Text
+   ============================================================================ */
+.eyebrow {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+}
+
+/* ============================================================================
+   Component: Badges
+   ============================================================================ */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: var(--radius-full);
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+}
+
+.hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 4px 0 0;
+}
+
+.muted {
+    color: var(--text-muted);
+}

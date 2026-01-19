@@ -9,32 +9,48 @@
 </head>
 <body>
 <div id="header"></div>
-<main class="about">
-  <section class="about__intro">
+
+<main class="about-page">
+  <section class="about-hero">
     <h1>About VinylMatch</h1>
-    <p>
-      VinylMatch bridges your digital playlists with the world of physical records by pairing Spotify tracks with Discogs
-      releases. It is built for collectors, DJs and anyone who wants to discover the perfect pressing for their favourite
-      songs.
-    </p>
+    <p class="tagline">Bridging your digital playlists with the world of physical records</p>
   </section>
-  <section class="about__features">
-    <h2>Key features</h2>
+
+  <article class="about-content">
+    <h2>What is VinylMatch?</h2>
+    <p>
+      VinylMatch pairs Spotify tracks with Discogs releases, making it easy for collectors, DJs, 
+      and vinyl enthusiasts to discover the perfect pressing for their favourite songs. Simply paste 
+      a Spotify playlist link and let VinylMatch find matching vinyl releases automatically.
+    </p>
+
+    <h2>Key Features</h2>
     <ul>
-      <li>Spotify OAuth login with automatic token refresh.</li>
-      <li>Progressive Discogs search that prefers barcode matches when available.</li>
-      <li>Quick shortcuts to external vinyl shops for every matched release.</li>
-      <li>Recent playlist memory so you can jump back into your latest searches.</li>
+      <li><strong>Spotify Integration</strong> — OAuth login with automatic token refresh keeps you connected.</li>
+      <li><strong>Smart Matching</strong> — Progressive Discogs search that prefers barcode matches when available.</li>
+      <li><strong>Shop Links</strong> — Quick shortcuts to HHV, JPC, Amazon and custom vinyl shops for every matched release.</li>
+      <li><strong>Playlist Memory</strong> — Recent playlist history so you can jump back into your latest searches.</li>
+      <li><strong>Curation Tools</strong> — Manual matching for edge cases where automatic matching falls short.</li>
     </ul>
-  </section>
-  <section class="about__support">
-    <h2>Support &amp; feedback</h2>
+
+    <h2>Technology</h2>
+    <div class="tech-stack">
+      <span class="tech-badge">Java 21</span>
+      <span class="tech-badge">Spotify Web API</span>
+      <span class="tech-badge">Discogs API</span>
+      <span class="tech-badge">Vanilla JavaScript</span>
+      <span class="tech-badge">Docker</span>
+    </div>
+
+    <h2>Support & Feedback</h2>
     <p>
-      Have ideas to improve VinylMatch? Open an issue on GitHub or reach out via the contact information supplied in the
-      project README.
+      Have ideas to improve VinylMatch? Found a bug? Open an issue on 
+      <a href="https://github.com/Loues000/VinylMatch" target="_blank" rel="noopener noreferrer">GitHub</a> 
+      or reach out via the contact information in the project README.
     </p>
-  </section>
+  </article>
 </main>
+
 <script type="module" src="/dist/main.js"></script>
 </body>
 </html>

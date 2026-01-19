@@ -1,30 +1,51 @@
+/**
+ * VinylMatch Header Styles
+ * Warm, vinyl-inspired navigation
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap');
+
 #header {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
-    height: 60px;
-    padding: 0 24px;
-    background-color: #1b1f29;
+    height: 64px;
+    padding: 0 28px;
+    background: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%);
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: space-between;
     z-index: 9999;
-    box-shadow: 0 10px 30px rgba(5, 12, 32, 0.35);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
     box-sizing: border-box;
 }
 
 .header-left {
     display: flex;
     align-items: center;
-    gap: 24px;
+    gap: 32px;
 }
 
 .logo {
-    font-size: 24px;
-    font-weight: bold;
-    letter-spacing: 0.08em;
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: #f5f5f5;
+    position: relative;
+}
+
+.logo::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #f59e0b, transparent);
+    border-radius: 2px;
 }
 
 .navigation {
@@ -33,81 +54,108 @@
     padding: 0;
     display: flex;
     align-items: center;
-    gap: 0;
+    gap: 8px;
 }
 
 .navigation li {
-    margin-right: 28px;
+    margin: 0;
 }
 
-.navigation-right li {
-    margin-left: 18px;
-    margin-right: 0;
+.navigation-right {
+    gap: 16px;
 }
 
 .navigation a {
     position: relative;
-    color: rgba(255, 255, 255, 0.82);
-    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 14px;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 500;
     text-decoration: none;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
     font-size: 13px;
-    transition: color 0.2s ease;
-    padding-bottom: 6px;
+    letter-spacing: 0.02em;
+    border-radius: 8px;
+    transition: all 0.2s ease;
 }
 
 .navigation a:hover {
     color: #fff;
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .navigation a.active {
-    color: #fff;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.12);
 }
 
-.navigation a.active::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: -6px;
-    height: 3px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.85);
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25);
-}
-
+/* Spotify Button */
 .spotify-btn {
     display: inline-flex;
     align-items: center;
-    padding: 8px 16px;
+    gap: 8px;
+    padding: 10px 18px;
     border-radius: 50px;
     text-decoration: none;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
     color: white;
-    background-color: #1DB954;
-    transition: background-color 0.2s ease, box-shadow 0.2s ease;
-    box-shadow: 0 10px 18px rgba(29, 185, 84, 0.28);
+    background: linear-gradient(135deg, #1DB954 0%, #1aa34a 100%);
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 16px rgba(29, 185, 84, 0.3);
 }
 
 .spotify-btn img {
     height: 18px;
-    margin-right: 8px;
 }
 
 .spotify-btn:hover {
-    background-color: #1aa34a;
-    box-shadow: 0 12px 22px rgba(29, 185, 84, 0.32);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(29, 185, 84, 0.4);
 }
 
-/* Eingeloggt Zustand */
+/* Logged in state */
 .spotify-btn.logged-in {
-    background-color: #4b5563;
-    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.25);
+    background: linear-gradient(135deg, #404040 0%, #2d2d2d 100%);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .spotify-btn.logged-in:hover {
-    background-color: #ef4444;
-    box-shadow: 0 12px 24px rgba(248, 113, 113, 0.35);
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    #header {
+        padding: 0 16px;
+    }
+
+    .header-left {
+        gap: 16px;
+    }
+
+    .logo {
+        font-size: 18px;
+    }
+
+    .navigation a {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    .navigation-left {
+        display: none;
+    }
+
+    .spotify-btn {
+        padding: 8px 14px;
+        font-size: 12px;
+    }
+
+    .spotify-btn img {
+        height: 16px;
+    }
 }

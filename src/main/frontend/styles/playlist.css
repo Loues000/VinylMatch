@@ -1,30 +1,22 @@
-:root {
-    --bg: #f5f5f5;
-    --text: #111;
-    --muted: #666;
-    --accent: #1f2937;
-    --accent-soft: #4b5563;
-    --radius: 12px;
-}
+/**
+ * VinylMatch Playlist Page Styles
+ * Warm, vinyl-inspired design
+ */
 
-html, body {
-    margin: 0;
-    padding: 0;
-    min-height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif;
-}
+@import url('./base.css');
 
+/* ============================================================================
+   Page Layout
+   ============================================================================ */
 body {
     padding: 88px 32px 48px;
-    box-sizing: border-box;
+    background: 
+        radial-gradient(ellipse at 100% 0%, rgba(245, 158, 11, 0.04) 0%, transparent 50%),
+        radial-gradient(ellipse at 0% 100%, rgba(212, 165, 116, 0.06) 0%, transparent 50%),
+        var(--bg-primary);
+    min-height: 100vh;
     display: flex;
     justify-content: center;
-}
-
-.hidden {
-    display: none !important;
 }
 
 .playlist-page {
@@ -35,25 +27,28 @@ body {
     gap: 32px;
 }
 
-/* Playlist Header */
+/* ============================================================================
+   Playlist Header
+   ============================================================================ */
 #playlist-header {
     display: flex;
     flex-wrap: wrap;
-    gap: 24px;
-    background: #fff;
-    border-radius: var(--radius);
-    box-shadow: 0 16px 32px rgba(15, 35, 45, 0.14);
-    padding: 24px;
+    gap: 28px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    padding: 28px;
     align-items: center;
 }
 
 #playlist-header img {
-    width: min(220px, 40vw);
-    height: min(220px, 40vw);
-    border-radius: 16px;
+    width: min(200px, 35vw);
+    height: min(200px, 35vw);
+    border-radius: var(--radius-lg);
     object-fit: cover;
     flex-shrink: 0;
-    box-shadow: 0 12px 28px rgba(15, 35, 45, 0.16);
+    box-shadow: var(--shadow-xl);
 }
 
 #playlist-header .header-info {
@@ -64,53 +59,96 @@ body {
 }
 
 #playlist-header .playlist-title {
-    font-size: clamp(32px, 5vw, 56px);
-    font-weight: 700;
-    margin: 0;
-    line-height: 1.05;
-    color: var(--accent);
+    font-family: var(--font-display);
+    font-size: clamp(28px, 5vw, 48px);
+    line-height: 1.1;
+    color: var(--text-primary);
 }
 
 #playlist-header .playlist-title a {
     color: inherit;
     text-decoration: none;
+    transition: color var(--transition-fast);
 }
 
 #playlist-header .playlist-title a:hover {
-    text-decoration: underline;
+    color: var(--accent);
 }
 
 #playlist-header .playlist-subtitle {
-    font-size: 18px;
-    color: var(--muted);
+    font-size: 16px;
+    color: var(--text-muted);
 }
 
-/* Tracks */
+/* ============================================================================
+   Playlist Toolbar
+   ============================================================================ */
+.playlist-toolbar {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.view-toggle {
+    display: inline-flex;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    padding: 4px;
+    box-shadow: var(--shadow-sm);
+    gap: 4px;
+}
+
+.view-toggle-btn {
+    appearance: none;
+    border: none;
+    border-radius: var(--radius-full);
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.view-toggle-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+}
+
+/* ============================================================================
+   Tracks - List View
+   ============================================================================ */
 .playlist-tracks {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    background: transparent;
-    transition: grid-template-columns 0.2s ease;
 }
 
 .playlist-tracks .track {
     display: grid;
     grid-template-columns: 72px 1fr auto;
-    gap: 10px;
+    gap: 16px;
     align-items: center;
-    padding: 12px 16px;
-    background: #fff;
-    border-radius: 6px;
-    box-shadow: 0 8px 18px rgba(15, 35, 45, 0.12);
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-fast);
+}
+
+.playlist-tracks .track:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
 }
 
 .track img.cover {
     width: 72px;
     height: 72px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     object-fit: cover;
-    background: #e5ebf1;
+    background: var(--bg-secondary);
 }
 
 .track .info {
@@ -119,24 +157,15 @@ body {
     gap: 6px;
 }
 
-.playlist-tracks[data-view-mode="grid"] .track .info {
-    align-items: center;
-    gap: 8px;
-}
-
-.playlist-tracks[data-view-mode="list"] .track .info {
-    align-items: flex-start;
-}
-
 .track .track-title {
     font-size: 16px;
     font-weight: 600;
-    color: var(--accent);
+    color: var(--text-primary);
 }
 
 .track .album {
     font-size: 14px;
-    color: var(--muted);
+    color: var(--text-secondary);
 }
 
 .track .album a {
@@ -145,12 +174,13 @@ body {
 }
 
 .track .album a:hover {
+    color: var(--accent);
     text-decoration: underline;
 }
 
 .track .artists {
     font-size: 13px;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .track .meta-row {
@@ -158,14 +188,18 @@ body {
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
+    margin-top: 4px;
 }
 
 .track .release-year {
     font-size: 12px;
     font-weight: 600;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
+/* ============================================================================
+   Track Actions
+   ============================================================================ */
 .track .actions {
     display: flex;
     gap: 8px;
@@ -177,28 +211,24 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: 1px solid rgba(31, 41, 55, 0.18);
-    color: var(--accent);
-    background: #fff;
-    transition: transform 0.1s ease, box-shadow 0.2s ease, border 0.2s ease;
+    min-width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
+    background: var(--bg-card);
+    font-size: 14px;
+    transition: all var(--transition-fast);
 }
 
 .track .actions a:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 14px rgba(15, 35, 45, 0.14);
-}
-
-.track .actions a[aria-disabled="true"] {
-    cursor: wait;
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
 }
 
 .track .actions a.inactive {
-    opacity: 0.6;
-    border-color: rgba(31, 41, 55, 0.18);
-    color: #6b7280;
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
@@ -207,223 +237,170 @@ body {
     box-shadow: none;
 }
 
-.track[data-discogs-state="pending"] .actions a {
+.track .actions a[aria-disabled="true"] {
     cursor: wait;
 }
 
+/* ============================================================================
+   Match Quality Badges
+   ============================================================================ */
 .match-quality {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: rgba(107, 114, 128, 0.12);
-    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 .match-quality::before {
     content: "";
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
     background: currentColor;
 }
 
 .match-quality--good {
-    background: rgba(34, 197, 94, 0.18);
-    color: #15803d;
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
 }
 
 .match-quality--medium {
-    background: rgba(249, 115, 22, 0.18);
-    color: #c2410c;
+    background: var(--accent-soft);
+    color: var(--accent-hover);
 }
 
 .match-quality--poor {
-    background: rgba(248, 113, 113, 0.18);
-    color: #b91c1c;
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
 }
 
 .match-quality--pending {
-    background: rgba(107, 114, 128, 0.16);
-    color: var(--muted);
+    background: var(--bg-secondary);
+    color: var(--text-muted);
 }
 
-.playlist-toolbar {
-    display: flex;
-    justify-content: flex-end;
-}
-
-
-.view-toggle {
+/* ============================================================================
+   Library Status Badges
+   ============================================================================ */
+.discogs-library {
     display: inline-flex;
-    background: #fff;
-    border-radius: 999px;
-    padding: 4px;
-    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
-    gap: 4px;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
-.view-toggle-btn {
-    appearance: none;
-    border: none;
-    border-radius: 999px;
-    padding: 6px 16px;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+.discogs-library.owned {
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
 }
 
-.view-toggle-btn.active {
-    background: var(--highlight);
-    color: var(--accent);
-    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+.discogs-library.wishlist {
+    background: var(--accent-soft);
+    color: var(--accent-hover);
 }
 
+.discogs-library.hidden {
+    display: none;
+}
+
+/* ============================================================================
+   Tracks - Grid View
+   ============================================================================ */
 .playlist-tracks[data-view-mode="grid"] {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 20px;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track {
     display: flex;
     flex-direction: column;
-    align-items: stretch;
     text-align: center;
-    gap: 12px;
+    gap: 16px;
     padding: 16px;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track img.cover {
     width: 100%;
     height: auto;
-    aspect-ratio: 3 / 4;
-    border-radius: 16px;
+    aspect-ratio: 1;
+    border-radius: var(--radius-lg);
 }
 
 .playlist-tracks[data-view-mode="grid"] .track .info {
+    align-items: center;
     gap: 8px;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track .track-title {
-    font-size: 18px;
+    font-size: 15px;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track .actions {
-    justify-content: space-between;
+    justify-content: center;
+    flex-wrap: wrap;
     width: 100%;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track .actions a {
-    flex: 1 1 auto;
-    height: 40px;
-    max-width: none;
-}
-
-.playlist-tracks[data-view-mode="grid"] .track .actions a span {
-    display: none;
+    flex: 1;
+    max-width: 60px;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track .meta-row {
-    justify-content: flex-start;
+    justify-content: center;
 }
 
-/* Load more */
+/* ============================================================================
+   Load More
+   ============================================================================ */
 .load-more-wrapper {
     display: flex;
     justify-content: center;
+    padding: 20px 0;
+}
+
+.load-more-wrapper.hidden {
+    display: none;
 }
 
 .load-more {
     min-width: 220px;
 }
 
-/* Buttons + overlay reused */
-.btn {
-    appearance: none;
-    border: none;
-    border-radius: 12px;
-    padding: 12px 22px;
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: 0.02em;
-    cursor: pointer;
-    background: linear-gradient(135deg, #1f2937, #4b5563);
-    color: #fff;
-    box-shadow: 0 12px 24px rgba(17, 24, 39, 0.22);
-    transition: transform 0.1s ease, box-shadow 0.2s ease, filter 0.2s ease;
-}
-
-.btn:hover {
-    box-shadow: 0 16px 30px rgba(17, 24, 39, 0.26);
-    filter: brightness(1.05);
-}
-
-.btn:active {
-    transform: translateY(1px);
-}
-
-.loading-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(13, 18, 28, 0.82);
-    color: #fff;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    z-index: 1200;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-}
-
-.loading-overlay.visible {
-    opacity: 1;
-    pointer-events: all;
-}
-
-.loading-overlay .spinner {
-    width: 68px;
-    height: 68px;
-    border-radius: 50%;
-    border: 6px solid rgba(255, 255, 255, 0.2);
-    border-top-color: #fff;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-/* Empty state */
+/* ============================================================================
+   Empty State
+   ============================================================================ */
 .playlist-empty {
     text-align: center;
-    color: var(--muted);
-    padding: 32px 0;
-    font-size: 15px;
+    color: var(--text-muted);
+    padding: 48px 24px;
+    font-size: 16px;
 }
 
-/* Discogs Experience */
+/* ============================================================================
+   Discogs Panel
+   ============================================================================ */
 .discogs-panel {
-    margin: 24px 0 12px;
+    margin: 8px 0;
 }
 
 .discogs-card {
-    background: #ffffff;
-    border: 1px solid rgba(31, 41, 55, 0.12);
-    border-radius: 16px;
-    padding: 20px;
-    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    padding: 24px;
+    box-shadow: var(--shadow-md);
 }
 
 .discogs-card__header {
@@ -433,70 +410,92 @@ body {
     align-items: flex-start;
 }
 
+.discogs-card__header h2 {
+    font-family: var(--font-display);
+    font-size: 24px;
+    margin: 8px 0 0;
+}
+
 .discogs-layout {
-    margin-top: 16px;
+    margin-top: 20px;
     display: grid;
-    grid-template-columns: 320px minmax(0, 1fr);
-    gap: 14px;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 20px;
 }
 
 .discogs-chip {
-    padding: 8px 14px;
-    border-radius: 999px;
-    background: rgba(34, 197, 94, 0.14);
-    color: #0f5132;
+    padding: 8px 16px;
+    border-radius: var(--radius-full);
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
     font-weight: 700;
+    font-size: 12px;
 }
 
 .discogs-chip.offline {
-    background: rgba(248, 113, 113, 0.18);
-    color: #991b1b;
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
 }
 
 .discogs-login {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 14px;
-    border: 1px solid rgba(31, 41, 55, 0.12);
-    border-radius: 12px;
-    background: linear-gradient(160deg, #f8fafc, #eef2ff);
+    gap: 16px;
+    padding: 20px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
 }
 
 .discogs-login__intro .muted {
-    margin: 6px 0;
+    margin: 8px 0;
+    font-size: 13px;
 }
 
 .discogs-token label {
     font-weight: 700;
+    font-size: 14px;
 }
 
 .discogs-login__row {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 10px;
+    margin-top: 8px;
 }
 
 .discogs-login input {
-    padding: 10px 12px;
-    border: 1px solid rgba(31, 41, 55, 0.16);
-    border-radius: 10px;
-    font-size: 15px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+.discogs-login input:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 .discogs-dashboard {
-    background: #f8fafc;
-    border: 1px solid rgba(31, 41, 55, 0.1);
-    border-radius: 12px;
-    padding: 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 20px;
     display: grid;
-    gap: 16px;
+    gap: 20px;
 }
 
 .discogs-summary {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.discogs-summary h3 {
+    font-family: var(--font-display);
+    font-size: 20px;
 }
 
 .discogs-actions {
@@ -510,63 +509,62 @@ body {
     align-items: baseline;
 }
 
+.discogs-wishlist__header h4 {
+    font-family: var(--font-display);
+    font-size: 18px;
+}
+
 .discogs-wishlist__grid {
-    margin-top: 12px;
+    margin-top: 16px;
     display: grid;
     gap: 12px;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
 }
 
 .discogs-wishlist__item {
-    border: 1px solid rgba(31, 41, 55, 0.12);
-    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
     padding: 12px;
-    background: #f8fafc;
+    background: var(--bg-card);
     display: grid;
     gap: 8px;
+    transition: all var(--transition-fast);
+}
+
+.discogs-wishlist__item:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-sm);
 }
 
 .discogs-wishlist__item img {
     width: 100%;
-    border-radius: 10px;
+    aspect-ratio: 1;
+    border-radius: var(--radius-sm);
     object-fit: cover;
-    background: #e5e7eb;
+    background: var(--bg-secondary);
+}
+
+.discogs-wishlist__item h5 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.discogs-wishlist__item a {
+    font-size: 12px;
+    color: var(--accent);
 }
 
 .discogs-wishlist__meta {
     display: flex;
     justify-content: space-between;
-    align-items: center;
     font-size: 12px;
-    color: #6b7280;
+    color: var(--text-muted);
 }
 
-.discogs-library {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-weight: 700;
-    font-size: 12px;
-    background: rgba(59, 130, 246, 0.12);
-    color: #1d4ed8;
-}
-
-.discogs-library.owned {
-    background: rgba(34, 197, 94, 0.16);
-    color: #166534;
-}
-
-.discogs-library.wishlist {
-    background: rgba(234, 179, 8, 0.16);
-    color: #92400e;
-}
-
-.discogs-library.hidden {
-    display: none;
-}
-
+/* ============================================================================
+   Responsive Design
+   ============================================================================ */
 @media (max-width: 900px) {
     body {
         padding: 84px 20px 40px;
@@ -576,6 +574,10 @@ body {
         padding: 20px;
     }
 
+    .discogs-layout {
+        grid-template-columns: 1fr;
+    }
+
     .playlist-tracks[data-view-mode="list"] .track {
         grid-template-columns: 64px 1fr;
         grid-template-rows: auto auto;
@@ -583,7 +585,8 @@ body {
 
     .playlist-tracks[data-view-mode="list"] .track .actions {
         grid-column: 1 / -1;
-        justify-self: flex-end;
+        justify-self: flex-start;
+        margin-top: 8px;
     }
 }
 
@@ -597,12 +600,22 @@ body {
         align-items: flex-start;
     }
 
+    #playlist-header img {
+        width: 120px;
+        height: 120px;
+    }
+
     .playlist-tracks[data-view-mode="list"] .track {
         grid-template-columns: 56px 1fr;
     }
 
     .playlist-tracks[data-view-mode="list"] .track img.cover {
         width: 56px;
-        height: 72px;
+        height: 56px;
+    }
+
+    .playlist-tracks[data-view-mode="grid"] {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 12px;
     }
 }

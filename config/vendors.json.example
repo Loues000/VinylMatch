@@ -1,0 +1,18 @@
+{
+  "vendors": [
+    {
+      "id": "discogs-market",
+      "label": "D",
+      "name": "Discogs Marketplace",
+      "urlTemplate": "https://www.discogs.com/sell/list?q={query}&format=Vinyl",
+      "enabled": true
+    },
+    {
+      "id": "ebay",
+      "label": "E",
+      "name": "eBay",
+      "urlTemplate": "https://www.ebay.de/sch/i.html?_nkw={query}+vinyl",
+      "enabled": false
+    }
+  ]
+}
