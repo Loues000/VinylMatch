@@ -11,7 +11,6 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -100,8 +99,18 @@ public final class HttpUtils {
         }
     }
 
+    public static void sendApiError(HttpExchange exchange, int statusCode, String code, String message) throws IOException {
+        String safeCode = (code == null || code.isBlank()) ? "error" : code.trim();
+        String safeMessage = (message == null || message.isBlank()) ? "Request failed" : message;
+        sendJson(exchange, statusCode, new ApiErrorResponse(new ApiErrorResponse.ApiError(safeCode, statusCode, safeMessage)));
+    }
+
     public static void sendError(HttpExchange exchange, int statusCode, String message) throws IOException {
-        byte[] body = message.getBytes(StandardCharsets.UTF_8);
+        sendApiError(exchange, statusCode, "http_error", message);
+    }
+
+    public static void sendText(HttpExchange exchange, int statusCode, String message) throws IOException {
+        byte[] body = (message == null ? "" : message).getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "text/plain; charset=utf-8");
         exchange.sendResponseHeaders(statusCode, body.length);
         try (OutputStream os = exchange.getResponseBody()) {

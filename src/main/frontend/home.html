@@ -3,12 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VINYL MATCH — Home</title>
+  <title>VinylMatch — Home</title>
 
-  <!-- Header Styles laden -->
+  <script>
+    (() => {
+      try {
+        const theme = localStorage.getItem("vinylmatch_theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch (_) {}
+    })();
+  </script>
+
   <link rel="stylesheet" href="/common/header.css">
-
-  <!-- Restliche Home-Seite Styles -->
   <link rel="stylesheet" href="/styles/home.css">
 </head>
 <body>
@@ -16,80 +22,85 @@
 
 <div id="global-loading" class="loading-overlay hidden" role="alert" aria-live="assertive">
   <div class="spinner" aria-hidden="true"></div>
-  <p id="global-loading-text">Playlist wird geladen …</p>
+  <p id="global-loading-text">Loading playlist…</p>
 </div>
 
 <div class="page-container" id="home-page">
-  <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-controls="home-sidebar" aria-expanded="true">
-    Filter &amp; Playlists
+  <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-controls="home-sidebar" aria-expanded="false" aria-label="Toggle playlist drawer">
+    Playlists
   </button>
   <div class="sidebar-backdrop hidden" id="sidebar-backdrop"></div>
+
   <aside class="sidebar" id="home-sidebar">
     <h3>Playlists</h3>
-    <div class="sidebar-tabs" role="tablist" aria-label="Playlist-Quellen">
+
+    <div class="sidebar-tabs" role="tablist" aria-label="Playlist sources">
       <button id="recent-tab" class="sidebar-tab active" type="button" role="tab" aria-selected="true" aria-controls="recent-panel" data-target="recent-panel">
-        Verlauf
+        Recent
       </button>
       <button id="popular-tab" class="sidebar-tab" type="button" role="tab" aria-selected="false" aria-controls="popular-panel" data-target="popular-panel">
         Popular
       </button>
       <button id="user-tab" class="sidebar-tab" type="button" role="tab" aria-selected="false" aria-controls="user-panel" data-target="user-panel" disabled>
-        Deine Playlists
+        Yours
       </button>
     </div>
 
     <div class="sidebar-panel" id="recent-panel" role="tabpanel" aria-labelledby="recent-tab">
       <div id="recent-list" class="recent-list"></div>
-      <p class="sidebar-empty" data-context="recent">Noch keine zuletzt geöffneten Playlists.</p>
+      <p class="sidebar-empty" data-context="recent">No recent playlists yet.</p>
     </div>
 
     <div class="sidebar-panel hidden" id="popular-panel" role="tabpanel" aria-labelledby="popular-tab">
       <div id="popular-list" class="recent-list"></div>
-      <p class="sidebar-empty" data-context="popular">Gerade keine Vorschläge verfügbar.</p>
+      <p class="sidebar-empty" data-context="popular">No suggestions available right now.</p>
     </div>
 
     <div class="sidebar-panel hidden" id="user-panel" role="tabpanel" aria-labelledby="user-tab" aria-disabled="true">
       <div id="user-controls" class="user-controls hidden">
         <label class="user-search" for="user-playlist-search">
-          <span class="sr-only">Playlists durchsuchen</span>
-          <input type="search" id="user-playlist-search" placeholder="Playlists durchsuchen" autocomplete="off" />
+          <span class="sr-only">Search playlists</span>
+          <input type="search" id="user-playlist-search" placeholder="Search playlists" autocomplete="off" />
         </label>
         <label class="user-sort" for="user-playlist-sort">
-          <span>Sortieren nach</span>
+          <span>Sort by</span>
           <select id="user-playlist-sort">
             <option value="name-asc">Name (A–Z)</option>
             <option value="name-desc">Name (Z–A)</option>
-            <option value="tracks-desc">Songs (absteigend)</option>
-            <option value="tracks-asc">Songs (aufsteigend)</option>
+            <option value="tracks-desc">Tracks (desc)</option>
+            <option value="tracks-asc">Tracks (asc)</option>
           </select>
         </label>
       </div>
+
       <div id="user-playlist-list" class="recent-list"></div>
+
       <div id="user-pagination" class="user-pagination hidden" aria-live="polite">
-        <button type="button" class="pager-btn" id="user-prev-page" aria-label="Vorherige Seite">‹</button>
-        <span id="user-page-info">Seite 1 von 1</span>
-        <button type="button" class="pager-btn" id="user-next-page" aria-label="Nächste Seite">›</button>
+        <button type="button" class="pager-btn" id="user-prev-page" aria-label="Previous page">‹</button>
+        <span id="user-page-info">Page 1 of 1</span>
+        <button type="button" class="pager-btn" id="user-next-page" aria-label="Next page">›</button>
       </div>
+
       <p id="user-status" class="sidebar-status" aria-live="polite"></p>
-      <p class="sidebar-empty" data-context="user">Melde dich mit Spotify an, um deine Playlists zu sehen.</p>
+      <p class="sidebar-empty" data-context="user">Log in with Spotify to see your playlists.</p>
     </div>
   </aside>
 
   <main>
     <div class="hero">
-      <img src="/design/VM_Logo.png" alt="VINYL MATCH" onerror="this.style.display='none'" />
+      <img src="/design/VM_Logo.png" alt="VinylMatch" onerror="this.style.display='none'" />
     </div>
 
     <div class="paste-panel">
       <div class="paste-panel__header">
         <div>
-          <p class="eyebrow">Direkt loslegen</p>
+          <p class="eyebrow">Get started</p>
           <h2>Paste your Spotify playlist link</h2>
         </div>
-        <p class="badge">Automatische Discogs- und Shop-Suche</p>
+        <p class="badge">Discogs + store links</p>
       </div>
 
-      <p class="help">Füge hier den Link zu deiner Spotify-Playlist ein und klicke auf "Use link".</p>
+      <p class="help">Paste a Spotify playlist URL and click “Use link”.</p>
 
       <div class="input-row">
         <textarea id="playlist-url" placeholder="https://open.spotify.com/playlist/…"></textarea>
@@ -97,46 +108,10 @@
           <button class="btn" id="use-link" type="button">Use link</button>
         </div>
       </div>
-
-      <div id="generated-links" class="generated-links" aria-live="polite">
-        <p>API Link: <a id="api-link" href="#" target="_blank" rel="noopener noreferrer"></a></p>
-        <p>Playlist Page: <a id="playlist-page-link" href="#"></a></p>
-      </div>
     </div>
-
-    <section class="feature-grid" aria-label="Was VinylMatch für dich erledigt">
-      <article class="feature">
-        <h3>Schritt 1: Playlist einfügen</h3>
-        <p>Wir lesen deine Spotify-Playlist ein, normalisieren die Daten und bereiten alles für die Suche vor.</p>
-      </article>
-      <article class="feature">
-        <h3>Schritt 2: Discogs-Matching</h3>
-        <p>Eine vereinfachte Artist-Suche sorgt für zuverlässigere Treffer – auch wenn Titelangaben variieren.</p>
-      </article>
-      <article class="feature">
-        <h3>Schritt 3: Shops finden</h3>
-        <p>Direkte Links zu HHV, JPC und Amazon – ohne Umwege über Suchmaschinen.</p>
-      </article>
-    </section>
-
-    <section class="facts" aria-label="Warum VinylMatch nutzen">
-      <div class="fact">
-        <span class="fact__number">&lt;1 Min</span>
-        <p>vom Playlist-Link zum Abgleich mit Discogs.</p>
-      </div>
-      <div class="fact">
-        <span class="fact__number">Bessere Treffer</span>
-        <p>durch Fokus auf den Hauptartist und stärker bereinigte Titel.</p>
-      </div>
-      <div class="fact">
-        <span class="fact__number">Direkte Stores</span>
-        <p>Links sind nur klickbar, wenn ein echter Shop-Treffer hinterlegt ist.</p>
-      </div>
-    </section>
   </main>
 </div>
 
-<!-- Dein TS/JS -->
 <script type="module" src="/dist/main.js"></script>
 </body>
 </html>

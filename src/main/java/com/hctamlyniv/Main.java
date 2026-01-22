@@ -1,21 +1,20 @@
 package com.hctamlyniv;
 
 import Server.ApiServer;
-import Server.PlaylistData;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Main {
 
+    private static final Logger log = LoggerFactory.getLogger(Main.class);
+
     public static void main(String[] args) {
         try {
-            // 1) Tokens (falls vorhanden) laden/refreshen, nicht blockierend
-            SpotifyAuth.initializeOnStartup();
-
-            // 2) API-Server starten (ohne festen Token)
+            // Start API server (hosted multi-user OAuth)
             ApiServer.start();
 
         } catch (Exception e) {
-            System.err.println("Fehler beim Starten der Anwendung: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Application startup failed", e);
         }
     }
 }

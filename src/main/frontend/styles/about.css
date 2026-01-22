@@ -6,9 +6,7 @@
 
 body {
     padding: 88px 32px 48px;
-    background: 
-        radial-gradient(ellipse at 0% 50%, rgba(212, 165, 116, 0.08) 0%, transparent 50%),
-        var(--bg-primary);
+    background: var(--bg-primary);
     min-height: 100vh;
 }
 
@@ -23,7 +21,6 @@ body {
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-lg);
     margin-bottom: 40px;
 }
 
@@ -44,7 +41,6 @@ body {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-xl);
     padding: 40px;
-    box-shadow: var(--shadow-md);
 }
 
 .about-content h2 {

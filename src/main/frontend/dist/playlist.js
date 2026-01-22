@@ -34,9 +34,39 @@ let state = {
     aggregated: null,
     viewMode: getStoredViewMode(),
 };
+function setupDiscogsDrawer() {
+    const page = document.querySelector(".playlist-page");
+    const toggle = document.getElementById("discogs-toggle");
+    const backdrop = document.getElementById("discogs-backdrop");
+    const sidebar = document.getElementById("discogs-sidebar");
+    if (!page || !(toggle instanceof HTMLButtonElement) || !backdrop || !sidebar) {
+        return;
+    }
+    if (toggle.dataset.bound === "true") {
+        return;
+    }
+    toggle.dataset.bound = "true";
+    const setOpen = (open) => {
+        page.classList.toggle("sidebar-open", open);
+        document.body.classList.toggle("drawer-open", !!open);
+        toggle.setAttribute("aria-expanded", String(!!open));
+        backdrop.classList.toggle("hidden", !open);
+    };
+    toggle.addEventListener("click", () => {
+        const isOpen = page.classList.contains("sidebar-open");
+        setOpen(!isOpen);
+    });
+    backdrop.addEventListener("click", () => setOpen(false));
+    window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            setOpen(false);
+        }
+    });
+    setOpen(false);
+}
 
 // Loading overlay functions
-function showOverlay(message = "Playlist wird geladen …") {
+function showOverlay(message = "Loading playlist…") {
     const overlay = document.getElementById("global-loading");
     if (!overlay) return;
     overlay.classList.remove("hidden");
@@ -57,7 +87,7 @@ function updateSubtitle(aggregated) {
     const subtitle = document.querySelector("#playlist-header .playlist-subtitle");
     if (!subtitle) return;
     const total = aggregated?.totalTracks ?? aggregated?.tracks?.filter(Boolean).length ?? 0;
-    subtitle.textContent = `${total} Songs`;
+    subtitle.textContent = `${total} tracks`;
 }
 
 function renderHeader(aggregated) {
@@ -112,7 +142,7 @@ function renderTracks(aggregated, options = {}) {
     if (!tracks.length && options.reset) {
         const empty = document.createElement("div");
         empty.className = "playlist-empty";
-        empty.textContent = "Keine Songs gefunden.";
+        empty.textContent = "No tracks found.";
         container.appendChild(empty);
         return;
     }
@@ -173,7 +203,7 @@ function setupCurationPanel() {
         buildQueue: () => buildCurationQueue(state.aggregated?.tracks),
         onCandidateSaved: (item, url) => applyManualDiscogsUrl(item, url),
     }).catch((error) => {
-        console.warn("Curation-Panel konnte nicht initialisiert werden", error);
+        console.warn("Curation panel could not be initialized", error);
         return null;
     });
     
@@ -219,9 +249,11 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
     const container = document.getElementById("playlist");
     
     if (!header || !container) {
-        console.error("Fehlende DOM-Elemente (#playlist-header oder #playlist).");
+        console.error("Missing DOM elements (#playlist-header or #playlist).");
         return;
     }
+
+    setupDiscogsDrawer();
     
     // Load custom vendor configuration (non-blocking)
     loadCustomVendors().catch(() => {});
@@ -269,8 +301,8 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
     try {
         await fetchPlaylistChunk(state.id, 0, pageSize, { reset: true });
     } catch (e) {
-        console.error("Fehler beim Laden der Playlist:", e);
-        container.textContent = `Fehler beim Laden der Playlist: ${e instanceof Error ? e.message : String(e)}`;
+        console.error("Failed to load playlist:", e);
+        container.textContent = `Failed to load playlist: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
         hideOverlay();
     }
@@ -288,13 +320,13 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
                 : state.aggregated.tracks?.length ?? 0;
             
             btn.disabled = true;
-            const originalText = btn.textContent || "Weitere Titel laden";
-            btn.textContent = "Lade weitere Titel …";
+            const originalText = btn.textContent || "Load more";
+            btn.textContent = "Loading…";
             
             try {
                 await fetchPlaylistChunk(state.id, offset, state.pageSize, { reset: false });
             } catch (e) {
-                alert("Weitere Titel konnten nicht geladen werden: " + (e instanceof Error ? e.message : String(e)));
+                alert("More tracks could not be loaded: " + (e instanceof Error ? e.message : String(e)));
             } finally {
                 btn.disabled = false;
                 btn.textContent = originalText;

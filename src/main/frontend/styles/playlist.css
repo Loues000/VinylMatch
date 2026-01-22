@@ -1,84 +1,95 @@
-/**
- * VinylMatch Playlist Page Styles
- * Warm, vinyl-inspired design
- */
-
 @import url('./base.css');
 
+:root {
+    --vm-playlist-sidebar-width: 360px;
+}
+
 /* ============================================================================
-   Page Layout
-   ============================================================================ */
+   Layout (sidebar pinned to window edge)
+   ========================================================================== */
 body {
-    padding: 88px 32px 48px;
-    background: 
-        radial-gradient(ellipse at 100% 0%, rgba(245, 158, 11, 0.04) 0%, transparent 50%),
-        radial-gradient(ellipse at 0% 100%, rgba(212, 165, 116, 0.06) 0%, transparent 50%),
-        var(--bg-primary);
+    padding: 88px 24px 48px;
     min-height: 100vh;
-    display: flex;
-    justify-content: center;
 }
 
 .playlist-page {
     width: 100%;
-    max-width: 1280px;
+    max-width: 980px;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 18px;
 }
 
 .playlist-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
-    gap: 20px;
-    align-items: start;
+    display: block;
 }
 
 .playlist-main {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 18px;
 }
 
 .playlist-sidebar {
-    position: sticky;
-    top: 96px;
+    position: fixed;
+    top: 64px;
+    right: 0;
+    bottom: 0;
+    width: var(--vm-playlist-sidebar-width);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 20px 18px 24px;
+    background: var(--bg-primary);
+    border-left: 1px solid var(--border-subtle);
+    transform: translateX(105%);
+    transition: transform var(--transition-normal);
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    resize: horizontal;
+    min-width: 300px;
+    max-width: min(92vw, 760px);
+}
+
+.playlist-page.sidebar-open .playlist-sidebar {
+    transform: translateX(0);
 }
 
 /* ============================================================================
-   Playlist Header
-   ============================================================================ */
+   Playlist header
+   ========================================================================== */
 #playlist-header {
     display: flex;
     flex-wrap: wrap;
-    gap: 28px;
+    gap: 18px;
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-lg);
-    padding: 28px;
+    padding: 20px;
     align-items: center;
 }
 
 #playlist-header img {
-    width: min(200px, 35vw);
-    height: min(200px, 35vw);
+    width: min(180px, 42vw);
+    height: min(180px, 42vw);
     border-radius: var(--radius-lg);
     object-fit: cover;
     flex-shrink: 0;
-    box-shadow: var(--shadow-xl);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
 }
 
 #playlist-header .header-info {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     min-width: 240px;
 }
 
 #playlist-header .playlist-title {
-    font-family: var(--font-display);
-    font-size: clamp(28px, 5vw, 48px);
+    font-size: clamp(22px, 4vw, 38px);
     line-height: 1.1;
     color: var(--text-primary);
 }
@@ -86,87 +97,107 @@ body {
 #playlist-header .playlist-title a {
     color: inherit;
     text-decoration: none;
-    transition: color var(--transition-fast);
-}
-
-#playlist-header .playlist-title a:hover {
-    color: var(--accent);
 }
 
 #playlist-header .playlist-subtitle {
-    font-size: 16px;
+    font-size: 14px;
     color: var(--text-muted);
 }
 
 /* ============================================================================
-   Playlist Toolbar
-   ============================================================================ */
+   Toolbar
+   ========================================================================== */
 .playlist-toolbar {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-weight: 650;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+}
+
+.sidebar-toggle:hover {
+    background: var(--accent-soft);
+}
+
+.sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 1050;
 }
 
 .view-toggle {
     display: inline-flex;
-    background: var(--bg-card);
+    gap: 6px;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-full);
     padding: 4px;
-    box-shadow: var(--shadow-sm);
-    gap: 4px;
+    background: var(--bg-card);
 }
 
 .view-toggle-btn {
     appearance: none;
-    border: none;
+    border: 1px solid transparent;
     border-radius: var(--radius-full);
-    padding: 8px 18px;
-    font-size: 13px;
-    font-weight: 600;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 650;
     background: transparent;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.view-toggle-btn:hover {
+    background: var(--accent-soft);
 }
 
 .view-toggle-btn.active {
-    background: var(--accent-soft);
-    color: var(--accent-hover);
+    background: var(--accent);
+    color: var(--text-inverse);
 }
 
 /* ============================================================================
-   Tracks - List View
-   ============================================================================ */
+   Tracks (list)
+   ========================================================================== */
 .playlist-tracks {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
 .playlist-tracks .track {
     display: grid;
-    grid-template-columns: 72px 1fr auto;
-    gap: 16px;
+    grid-template-columns: 64px 1fr auto;
+    row-gap: 14px;
+    column-gap: 50px;
     align-items: center;
-    padding: 16px;
+    padding: 14px;
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-sm);
-    transition: all var(--transition-fast);
-}
-
-.playlist-tracks .track:hover {
-    border-color: var(--accent);
-    box-shadow: var(--shadow-md);
+    border-radius: var(--radius-lg);
 }
 
 .track img.cover {
-    width: 72px;
-    height: 72px;
+    width: 100px;
+    height: 100px;
     border-radius: var(--radius-md);
     object-fit: cover;
     background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
 }
 
 .track .info {
@@ -176,28 +207,18 @@ body {
 }
 
 .track .track-title {
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     color: var(--text-primary);
 }
 
 .track .album {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text-secondary);
 }
 
-.track .album a {
-    color: inherit;
-    text-decoration: none;
-}
-
-.track .album a:hover {
-    color: var(--accent);
-    text-decoration: underline;
-}
-
 .track .artists {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-muted);
 }
 
@@ -206,265 +227,170 @@ body {
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
-    margin-top: 4px;
+    margin-top: 2px;
+}
+
+.track .album a {
+    text-decoration: none;
+}
+
+.track .album a:hover {
+    text-decoration: underline;
+}
+
+.track .actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.discogs-action,
+.vendor-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    padding: 0;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+    white-space: nowrap;
+}
+
+.discogs-action {
+    width: 32px;
+}
+
+.discogs-action svg {
+    display: block;
+}
+
+.vendor-link {
+    width: 32px;
+    padding: 0;
+}
+
+.discogs-action:hover,
+.vendor-link:hover {
+    background: var(--accent-soft);
+    border-color: var(--border-default);
+}
+
+.discogs-action.inactive,
+.vendor-link.inactive {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.match-quality {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.match-quality--good {
+    background: var(--accent);
+    color: var(--text-inverse);
+    border-color: transparent;
+}
+
+.match-quality--pending {
+    opacity: 0.8;
+}
+
+.match-quality--poor {
+    opacity: 0.85;
+}
+
+.discogs-library {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.discogs-library.owned {
+    background: var(--accent-soft);
 }
 
 .track .release-year {
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 650;
     color: var(--text-muted);
 }
 
 /* ============================================================================
-   Track Actions
-   ============================================================================ */
-.track .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-}
-
-.track .actions a {
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 36px;
-    height: 36px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-default);
-    color: var(--text-primary);
-    background: var(--bg-card);
-    font-size: 14px;
-    transition: all var(--transition-fast);
-}
-
-.track .actions a:hover {
-    transform: translateY(-1px);
-    border-color: var(--accent);
-    box-shadow: var(--shadow-md);
-}
-
-.track .actions a.inactive {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.track .actions a.inactive:hover {
-    transform: none;
-    box-shadow: none;
-}
-
-.track .actions a[aria-disabled="true"] {
-    cursor: wait;
-}
-
-/* ============================================================================
-   Match Quality Badges
-   ============================================================================ */
-.match-quality {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 5px 12px;
-    border-radius: var(--radius-full);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.match-quality::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-}
-
-.match-quality--good {
-    background: rgba(16, 185, 129, 0.15);
-    color: #059669;
-}
-
-.match-quality--medium {
-    background: var(--accent-soft);
-    color: var(--accent-hover);
-}
-
-.match-quality--poor {
-    background: rgba(239, 68, 68, 0.12);
-    color: #dc2626;
-}
-
-.match-quality--pending {
-    background: var(--bg-secondary);
-    color: var(--text-muted);
-}
-
-/* ============================================================================
-   Library Status Badges
-   ============================================================================ */
-.discogs-library {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: var(--radius-full);
-    font-weight: 700;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.discogs-library.owned {
-    background: rgba(16, 185, 129, 0.15);
-    color: #059669;
-}
-
-.discogs-library.wishlist {
-    background: var(--accent-soft);
-    color: var(--accent-hover);
-}
-
-.discogs-library.hidden {
-    display: none;
-}
-
-/* ============================================================================
-   Tracks - Grid View
-   ============================================================================ */
+   Tracks (grid)
+   ========================================================================== */
 .playlist-tracks[data-view-mode="grid"] {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 20px;
+    gap: 12px;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track {
-    display: flex;
-    flex-direction: column;
-    text-align: center;
-    gap: 16px;
-    padding: 16px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    align-items: start;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track img.cover {
     width: 100%;
     height: auto;
-    aspect-ratio: 1;
-    border-radius: var(--radius-lg);
+    aspect-ratio: 1 / 1;
 }
 
-.playlist-tracks[data-view-mode="grid"] .track .info {
-    align-items: center;
-    gap: 8px;
-}
-
-.playlist-tracks[data-view-mode="grid"] .track .track-title {
-    font-size: 15px;
-}
-
-.playlist-tracks[data-view-mode="grid"] .track .actions {
-    justify-content: center;
-    flex-wrap: wrap;
-    width: 100%;
-}
-
-.playlist-tracks[data-view-mode="grid"] .track .actions a {
-    flex: 1;
-    max-width: 60px;
-}
-
-.playlist-tracks[data-view-mode="grid"] .track .meta-row {
-    justify-content: center;
-}
-
-/* ============================================================================
-   Load More
-   ============================================================================ */
 .load-more-wrapper {
     display: flex;
     justify-content: center;
-    padding: 20px 0;
-}
-
-.load-more-wrapper.hidden {
-    display: none;
-}
-
-.load-more {
-    min-width: 220px;
+    padding: 10px 0 18px;
 }
 
 /* ============================================================================
-   Empty State
-   ============================================================================ */
-.playlist-empty {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 48px 24px;
-    font-size: 16px;
-}
-
-/* ============================================================================
-   Discogs Panel
-   ============================================================================ */
-.discogs-panel {
-    margin: 8px 0;
-}
-
-.discogs-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-xl);
-    padding: 24px;
-    box-shadow: var(--shadow-md);
-    position: sticky;
-    top: 0;
-}
-
+   Discogs sidebar
+   ========================================================================== */
 .discogs-card__header {
     display: flex;
     justify-content: space-between;
-    gap: 16px;
     align-items: flex-start;
+    gap: 10px;
+    padding: 14px 14px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
 }
 
-.discogs-card__header h2 {
-    font-family: var(--font-display);
-    font-size: 24px;
-    margin: 8px 0 0;
-}
-
-.discogs-layout {
-    margin-top: 20px;
-    display: grid;
-    grid-template-columns: 300px minmax(0, 1fr);
-    gap: 20px;
-}
-
-.discogs-tabs {
-    display: inline-flex;
-    gap: 8px;
-    background: #f3f4f6;
-    padding: 6px;
-    border-radius: 12px;
-    margin: 10px 0;
-}
-
-.discogs-tab {
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    padding: 8px 12px;
-    border-radius: 10px;
+.discogs-chip {
+    padding: 6px 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
     font-weight: 700;
-    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
-.discogs-tab[aria-selected="true"] {
-    background: #111827;
-    color: #fff;
+.discogs-chip.offline {
+    opacity: 0.9;
 }
 
 .discogs-sidebar-panels {
@@ -473,79 +399,48 @@ body {
     gap: 12px;
 }
 
-.discogs-chip {
-    padding: 8px 16px;
-    border-radius: var(--radius-full);
-    background: rgba(16, 185, 129, 0.15);
-    color: #059669;
-    font-weight: 700;
-    font-size: 12px;
-}
-
-.discogs-chip.offline {
-    background: rgba(239, 68, 68, 0.12);
-    color: #dc2626;
-}
-
 .discogs-login {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 20px;
-    border: 1px solid var(--border-default);
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     background: var(--bg-secondary);
 }
 
-.discogs-login__intro .muted {
-    margin: 8px 0;
-    font-size: 13px;
-}
-
-.discogs-token label {
-    font-weight: 700;
-    font-size: 14px;
-}
-
 .discogs-login__row {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
-    margin-top: 8px;
+    align-items: center;
 }
 
 .discogs-login input {
-    padding: 12px 14px;
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
+    padding: 10px 12px;
     font-size: 14px;
-    background: var(--bg-card);
-    color: var(--text-primary);
+    height: 40px;
 }
 
-.discogs-login input:focus {
-    outline: none;
-    border-color: var(--accent);
+.discogs-login__row .btn {
+    height: 40px;
+    padding: 0 14px;
 }
 
 .discogs-dashboard {
     background: var(--bg-secondary);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
-    padding: 20px;
+    padding: 16px;
     display: grid;
-    gap: 20px;
+    gap: 14px;
 }
 
 .discogs-summary {
     display: flex;
     justify-content: space-between;
     align-items: center;
-}
-
-.discogs-summary h3 {
-    font-family: var(--font-display);
-    font-size: 20px;
+    gap: 10px;
 }
 
 .discogs-actions {
@@ -553,118 +448,177 @@ body {
     gap: 8px;
 }
 
+.discogs-actions .btn {
+    height: 34px;
+    padding: 0 12px;
+    font-size: 12px;
+    border-radius: var(--radius-md);
+    white-space: nowrap;
+}
+
+.discogs-wishlist {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    padding: 12px;
+}
+
 .discogs-wishlist__header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
+    gap: 10px;
 }
 
 .discogs-wishlist__header h4 {
-    font-family: var(--font-display);
-    font-size: 18px;
-}
-
-.discogs-wishlist__grid {
-    margin-top: 16px;
-    display: grid;
-    gap: 12px;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-}
-
-.discogs-wishlist__item {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    padding: 12px;
-    background: var(--bg-card);
-    display: grid;
-    gap: 8px;
-    transition: all var(--transition-fast);
-}
-
-.discogs-wishlist__item:hover {
-    border-color: var(--accent);
-    box-shadow: var(--shadow-sm);
-}
-
-.discogs-wishlist__item img {
-    width: 100%;
-    aspect-ratio: 1;
-    border-radius: var(--radius-sm);
-    object-fit: cover;
-    background: var(--bg-secondary);
-}
-
-.discogs-wishlist__item h5 {
-    font-size: 14px;
-    font-weight: 600;
     margin: 0;
-}
-
-.discogs-wishlist__item a {
-    font-size: 12px;
-    color: var(--accent);
-}
-
-.discogs-wishlist__meta {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 750;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     color: var(--text-muted);
 }
 
-.discogs-wishlist__item.cover-only {
-    padding: 0;
-    overflow: hidden;
-    display: block;
+.discogs-wishlist__header .muted {
+    margin: 0;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
-.discogs-wishlist__item.cover-only img {
+.discogs-wishlist__grid {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.discogs-wishlist__item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 10px;
+    align-items: center;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+        "cover title"
+        "cover meta";
+    padding: 8px;
     border-radius: var(--radius-md);
-    height: 180px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-elevated);
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.discogs-wishlist__item:hover {
+    background: var(--accent-soft);
+    border-color: var(--border-default);
+}
+
+.discogs-wishlist__item img,
+.discogs-wishlist__placeholder {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+}
+
+.discogs-wishlist__item img {
+    grid-area: cover;
+}
+
+.discogs-wishlist__placeholder {
+    grid-area: cover;
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+    font-weight: 800;
+    font-size: 12px;
+}
+
+.discogs-wishlist__body {
+    min-width: 0;
+}
+
+.discogs-wishlist__item h5,
+.discogs-wishlist__title {
+    grid-area: title;
+    margin: 0;
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--text-primary);
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.discogs-wishlist__meta {
+    grid-area: meta;
+    display: flex;
+    gap: 8px;
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 1.2;
+    color: var(--text-muted);
+    overflow: hidden;
+}
+
+.discogs-wishlist__meta span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.discogs-wishlist__item > a {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    text-indent: -9999px;
+    overflow: hidden;
+}
+
+.discogs-wishlist__item > a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 /* ============================================================================
-   Responsive Design
-   ============================================================================ */
+   Responsive
+   ========================================================================== */
 @media (max-width: 900px) {
     body {
-        padding: 84px 20px 40px;
+        padding: 84px 16px 32px;
+    }
+    .playlist-sidebar {
+        width: min(var(--vm-playlist-sidebar-width), 88vw);
+        box-shadow: var(--shadow-md);
     }
 
     .playlist-layout {
-        grid-template-columns: 1fr;
-    }
-
-    .playlist-sidebar .discogs-card {
-        position: relative;
-        top: auto;
+        display: block;
     }
 
     #playlist-header {
-        padding: 20px;
+        padding: 16px;
     }
 
-    .discogs-layout {
-        grid-template-columns: 1fr;
-    }
-
-    .playlist-tracks[data-view-mode="list"] .track {
-        grid-template-columns: 64px 1fr;
+    .playlist-tracks .track {
+        grid-template-columns: 56px 1fr;
         grid-template-rows: auto auto;
     }
 
-    .playlist-tracks[data-view-mode="list"] .track .actions {
+    .playlist-tracks .track .actions {
         grid-column: 1 / -1;
         justify-self: flex-start;
-        margin-top: 8px;
     }
 }
 
 @media (max-width: 640px) {
-    body {
-        padding: 76px 16px 32px;
-    }
-
     #playlist-header {
         flex-direction: column;
         align-items: flex-start;
@@ -673,19 +627,5 @@ body {
     #playlist-header img {
         width: 120px;
         height: 120px;
-    }
-
-    .playlist-tracks[data-view-mode="list"] .track {
-        grid-template-columns: 56px 1fr;
-    }
-
-    .playlist-tracks[data-view-mode="list"] .track img.cover {
-        width: 56px;
-        height: 56px;
-    }
-
-    .playlist-tracks[data-view-mode="grid"] {
-        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-        gap: 12px;
     }
 }

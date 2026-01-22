@@ -2,15 +2,19 @@ package Server.routes;
 
 import Server.auth.SpotifyOAuthService;
 import Server.cache.PlaylistCache;
+import Server.http.ApiFilters;
 import Server.http.HttpUtils;
-import Server.session.CookieUtils;
 import Server.session.SpotifySession;
 import Server.session.SpotifySessionStore;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
@@ -18,6 +22,8 @@ import java.util.Map;
  * Handles Spotify authentication routes with session-based multi-user support.
  */
 public class AuthRoutes {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthRoutes.class);
 
     private final PlaylistCache playlistCache;
     private final SpotifySessionStore sessionStore;
@@ -30,10 +36,10 @@ public class AuthRoutes {
     }
 
     public void register(HttpServer server) {
-        server.createContext("/api/auth/status", this::handleStatus);
-        server.createContext("/api/auth/login", this::handleLogin);
-        server.createContext("/api/auth/logout", this::handleLogout);
-        server.createContext("/api/auth/callback", this::handleCallback);
+        server.createContext("/api/auth/status", this::handleStatus).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/auth/login", this::handleLogin).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/auth/logout", this::handleLogout).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/auth/callback", this::handleCallback).getFilters().add(ApiFilters.rateLimiting());
     }
 
     private void handleStatus(HttpExchange exchange) throws IOException {
@@ -41,7 +47,7 @@ public class AuthRoutes {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
 
             if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur GET erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only GET is supported");
                 return;
             }
 
@@ -49,14 +55,10 @@ public class AuthRoutes {
             SpotifySession session = sessionStore.getSession(exchange);
             boolean loggedIn = session != null && session.isLoggedIn();
 
-            // Fall back to legacy global token check
-            if (!loggedIn) {
-                loggedIn = com.hctamlyniv.SpotifyAuth.isUserLoggedIn();
-            }
-
             HttpUtils.sendJson(exchange, 200, Map.of("loggedIn", loggedIn));
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler bei Auth-Status: " + e.getMessage());
+            log.warn("Auth status failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "auth_status_failed", "Failed to read auth status");
         }
     }
 
@@ -65,12 +67,12 @@ public class AuthRoutes {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
 
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
             if (!oauthService.isConfigured()) {
-                HttpUtils.sendError(exchange, 503, "Spotify credentials not configured");
+                HttpUtils.sendApiError(exchange, 503, "spotify_not_configured", "Spotify OAuth is not configured");
                 return;
             }
 
@@ -78,18 +80,62 @@ public class AuthRoutes {
             SpotifySession session = sessionStore.getOrCreateSession(exchange);
             
             // Build authorization URL with CSRF state
-            String url = oauthService.buildAuthorizationUrl(session.getSessionId());
+            URI redirectOverride = oauthService.isRedirectUriExplicit() ? null : deriveLoopbackRedirectUri(exchange);
+            String url = oauthService.buildAuthorizationUrl(session.getSessionId(), redirectOverride);
             
             HttpUtils.sendJson(exchange, 200, Map.of("authorizeUrl", url));
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler beim Start des Logins: " + e.getMessage());
+            log.warn("Auth login start failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "auth_login_failed", "Failed to start login");
+        }
+    }
+
+    /**
+     * For local development, Spotify requires an explicit loopback IP literal (e.g. 127.0.0.1) and does not allow
+     * localhost as a redirect URI. We still derive the port from the current request so dynamic ports work.
+     *
+     * This intentionally only trusts loopback hosts to avoid Host-header based redirect manipulation.
+     */
+    private static URI deriveLoopbackRedirectUri(HttpExchange exchange) {
+        if (exchange == null) return null;
+        String hostHeader = exchange.getRequestHeaders().getFirst("Host");
+        if (hostHeader == null || hostHeader.isBlank()) return null;
+
+        String scheme = HttpUtils.isSecureRequest(exchange) ? "https" : "http";
+        URI base;
+        try {
+            base = URI.create(scheme + "://" + hostHeader.trim());
+        } catch (Exception e) {
+            return null;
+        }
+
+        String host = base.getHost();
+        if (host == null || host.isBlank()) return null;
+        String lowerHost = host.toLowerCase();
+        boolean isLoopback = lowerHost.equals("localhost") || lowerHost.equals("127.0.0.1") || lowerHost.equals("::1");
+        if (!isLoopback) return null;
+
+        int port = base.getPort();
+        if (port <= 0) {
+            try {
+                port = exchange.getLocalAddress().getPort();
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+
+        try {
+            String canonicalHost = lowerHost.equals("::1") ? "::1" : "127.0.0.1";
+            return new URI(scheme, null, canonicalHost, port, "/api/auth/callback", null, null);
+        } catch (URISyntaxException e) {
+            return null;
         }
     }
 
     private void handleCallback(HttpExchange exchange) throws IOException {
         try {
             if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur GET erlaubt");
+                HttpUtils.sendText(exchange, 405, "Only GET is supported");
                 return;
             }
 
@@ -117,6 +163,8 @@ public class AuthRoutes {
             // Get or create session
             SpotifySession session = sessionStore.getSession(exchange);
             if (session == null) {
+                String host = exchange.getRequestHeaders().getFirst("Host");
+                log.warn("No session cookie on Spotify callback (Host={}). This is usually a hostname mismatch (localhost vs 127.0.0.1) between /api/auth/login and the redirect URI. Ensure you use the same hostname (prefer 127.0.0.1) for both login and callback.", host);
                 session = sessionStore.createSession(exchange);
             }
 
@@ -124,7 +172,6 @@ public class AuthRoutes {
             boolean success = oauthService.exchangeCodeForTokens(code, state, session);
             
             if (success) {
-                // Also update the legacy global tokens for backwards compatibility
                 try {
                     // Store in session store
                     sessionStore.storeSession(session);
@@ -136,6 +183,7 @@ public class AuthRoutes {
                 sendCallbackHtml(exchange, false, "Token exchange failed. Please try again.");
             }
         } catch (Exception e) {
+            log.warn("Auth callback failed: {}", e.getMessage());
             sendCallbackHtml(exchange, false, "Error: " + e.getMessage());
         }
     }
@@ -145,20 +193,18 @@ public class AuthRoutes {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
 
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
             // Destroy session
             sessionStore.destroySession(exchange);
-            
-            // Also logout from legacy global store
-            com.hctamlyniv.SpotifyAuth.logout();
-            
+
             playlistCache.invalidateForAuthChange(null);
             HttpUtils.sendNoContent(exchange);
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler beim Logout: " + e.getMessage());
+            log.warn("Logout failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "logout_failed", "Failed to logout");
         }
     }
 
@@ -179,12 +225,6 @@ public class AuthRoutes {
             }
         }
 
-        // Fall back to legacy global token
-        if (com.hctamlyniv.SpotifyAuth.isUserLoggedIn()) {
-            try { com.hctamlyniv.SpotifyAuth.refreshAccessToken(); } catch (Exception ignored) {}
-            return com.hctamlyniv.SpotifyAuth.getAccessToken();
-        }
-
         return null;
     }
 
@@ -195,16 +235,6 @@ public class AuthRoutes {
         SpotifySession session = sessionStore.getSession(exchange);
         if (session != null) {
             return session.getSessionId();
-        }
-        
-        // Legacy fallback
-        String refreshToken = com.hctamlyniv.SpotifyAuth.getRefreshToken();
-        if (refreshToken != null && !refreshToken.isBlank()) {
-            return refreshToken;
-        }
-        String accessToken = com.hctamlyniv.SpotifyAuth.getAccessToken();
-        if (accessToken != null && !accessToken.isBlank()) {
-            return accessToken;
         }
         return "";
     }
@@ -217,11 +247,11 @@ public class AuthRoutes {
         if (session != null && session.isLoggedIn()) {
             return true;
         }
-        return com.hctamlyniv.SpotifyAuth.isUserLoggedIn();
+        return false;
     }
 
     private void sendCallbackHtml(HttpExchange exchange, boolean success, String message) throws IOException {
-        String status = success ? "Login erfolgreich" : "Login fehlgeschlagen";
+        String status = success ? "Login successful" : "Login failed";
         String color = success ? "#1DB954" : "#e74c3c";
         String html = """
             <!DOCTYPE html>
@@ -267,7 +297,7 @@ public class AuthRoutes {
                 <div class="card">
                     <h1>%s</h1>
                     <p>%s</p>
-                    <p class="close-hint">Du kannst dieses Fenster jetzt schließen.</p>
+                    <p class="close-hint">You can close this window now.</p>
                 </div>
                 <script>
                     if (window.opener) {

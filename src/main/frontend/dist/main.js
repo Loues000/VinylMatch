@@ -2,7 +2,7 @@ import { injectHeader } from "./common/header.js";
 import { loadPlaylist } from "./playlist.js";
 import { readRecents, storePlaylistChunk, readCachedPlaylist } from "./storage.js";
 const PLAYLIST_PAGE_SIZE = 20;
-function showGlobalLoading(message = "Playlist wird geladen …") {
+function showGlobalLoading(message = "Loading playlist…") {
     const overlay = document.getElementById("global-loading");
     if (!overlay)
         return;
@@ -32,11 +32,20 @@ function createPlaylistCard(item) {
     info.className = "title";
     info.textContent = item.name || "Spotify Playlist";
     const metaText = [];
-    if (typeof item.trackCount === "number" && item.trackCount > 0) {
-        metaText.push(`${item.trackCount} Songs`);
+    const trackCount = typeof item.trackCount === "number"
+        ? item.trackCount
+        : (typeof item.tracksTotal === "number"
+            ? item.tracksTotal
+            : (typeof item.totalTracks === "number"
+                ? item.totalTracks
+                : (typeof item.tracks?.total === "number"
+                    ? item.tracks.total
+                    : null)));
+    if (typeof trackCount === "number" && trackCount > 0) {
+        metaText.push(`${trackCount} tracks`);
     }
     if (item.owner && item.owner.trim()) {
-        metaText.push(`von ${item.owner}`);
+        metaText.push(`by ${item.owner}`);
     }
     if (metaText.length > 0) {
         const meta = document.createElement("div");
@@ -66,7 +75,7 @@ function renderRecents() {
         return;
     }
     empty.classList.add("hidden");
-    for (const item of recents) {
+    for (const item of recents.slice(0, 10)) {
         if (!item?.id)
             continue;
         const card = createPlaylistCard(item);
@@ -82,7 +91,7 @@ const POPULAR_PLAYLISTS = [
     {
         id: "37i9dQZF1DXcBWIGoYBM5M",
         name: "Today's Top Hits",
-        description: "Aktuelle Spotify-Charts",
+        description: "Spotify's current chart hits",
         owner: "Spotify",
         trackCount: 50,
         coverUrl: "https://charts-images.scdn.co/assets/locale_en/regional/daily/region_global_large.jpg",
@@ -90,7 +99,7 @@ const POPULAR_PLAYLISTS = [
     {
         id: "37i9dQZF1DX4JAvHpjipBk",
         name: "Rock Classics",
-        description: "Zeitlose Rock-Favoriten",
+        description: "Timeless rock favorites",
         owner: "Spotify",
         trackCount: 100,
         coverUrl: "https://i.scdn.co/image/ab67706f00000002ca7be4aa69664d1d2b9eb12b",
@@ -117,7 +126,7 @@ function renderPopular() {
         });
         const meta = document.createElement("p");
         meta.className = "sidebar-hint";
-        meta.textContent = item.description || "Beliebte Playlist";
+        meta.textContent = item.description || "Popular playlist";
         card.appendChild(meta);
         card.addEventListener("click", (event) => {
             event.preventDefault();
@@ -153,6 +162,7 @@ window.addEventListener("DOMContentLoaded", () => {
             if (pageContainer) {
                 pageContainer.classList.toggle("sidebar-open", open);
             }
+            document.body.classList.toggle("drawer-open", !!open);
             if (sidebarToggle) {
                 sidebarToggle.setAttribute("aria-expanded", String(Boolean(open)));
             }
@@ -163,38 +173,17 @@ window.addEventListener("DOMContentLoaded", () => {
                 sidebarBackdrop.classList.toggle("hidden", !open);
             }
         };
-        const evaluateSidebar = () => {
-            const isDesktop = window.matchMedia("(min-width: 1101px)").matches;
-            if (isDesktop) {
-                if (pageContainer) {
-                    pageContainer.classList.remove("sidebar-open");
-                }
-                if (sidebarToggle) {
-                    sidebarToggle.setAttribute("aria-expanded", "true");
-                }
-                if (sidebarBackdrop) {
-                    sidebarBackdrop.classList.add("hidden");
-                }
-                if (sidebar) {
-                    sidebar.dataset.open = "true";
-                }
-            }
-            else if (!pageContainer?.classList.contains("sidebar-open")) {
-                setSidebarOpen(false);
-            }
-        };
         sidebarToggle?.addEventListener("click", () => {
             const isOpen = pageContainer?.classList.contains("sidebar-open");
             setSidebarOpen(!isOpen);
         });
         sidebarBackdrop?.addEventListener("click", () => setSidebarOpen(false));
         window.addEventListener("keydown", (event) => {
-            if (event.key === "Escape" && !window.matchMedia("(min-width: 1101px)").matches) {
+            if (event.key === "Escape") {
                 setSidebarOpen(false);
             }
         });
-        window.addEventListener("resize", evaluateSidebar);
-        evaluateSidebar();
+        setSidebarOpen(false);
         const recentTab = document.getElementById("recent-tab");
         const popularTab = document.getElementById("popular-tab");
         const userTab = document.getElementById("user-tab");
@@ -269,7 +258,7 @@ window.addEventListener("DOMContentLoaded", () => {
             if (!isLoggedIn) {
                 userPanel.setAttribute("aria-disabled", "true");
                 userPanel.classList.add("hidden");
-                userEmpty.textContent = "Melde dich mit Spotify an, um deine Playlists zu sehen.";
+                userEmpty.textContent = "Log in with Spotify to see your playlists.";
                 userEmpty.classList.remove("hidden");
                 updateControlsVisibility(false);
                 if (userStatus)
@@ -284,18 +273,18 @@ window.addEventListener("DOMContentLoaded", () => {
             const start = (userState.page - 1) * userState.pageSize;
             const pageItems = filtered.slice(start, start + userState.pageSize);
             userList.textContent = "";
-            let emptyMessage = "Keine Playlists gefunden.";
+            let emptyMessage = "No playlists found.";
             if (userState.error === "login") {
-                emptyMessage = "Bitte aktualisiere den Login mit Spotify.";
+                emptyMessage = "Please log in with Spotify again.";
             }
             else if (userState.error) {
-                emptyMessage = "Deine Playlists konnten nicht geladen werden.";
+                emptyMessage = "Your playlists could not be loaded.";
             }
             else if (userState.loading && !hasData) {
-                emptyMessage = "Playlists werden geladen …";
+                emptyMessage = "Loading playlists…";
             }
             else if (!hasData) {
-                emptyMessage = "Keine Playlists verfügbar.";
+                emptyMessage = "No playlists available.";
             }
             const showEmpty = !pageItems.length;
             if (showEmpty) {
@@ -323,17 +312,17 @@ window.addEventListener("DOMContentLoaded", () => {
                 if (userNext)
                     userNext.disabled = userState.page >= totalPages;
                 if (userPageInfo)
-                    userPageInfo.textContent = `Seite ${Math.min(userState.page, totalPages)} von ${totalPages}`;
+                    userPageInfo.textContent = `Page ${Math.min(userState.page, totalPages)} of ${totalPages}`;
             }
             if (userStatus) {
                 if (userState.backgroundLoading) {
-                    userStatus.textContent = `Lade weitere Playlists … (${userState.items.size}/${userState.total || "?"})`;
+                    userStatus.textContent = `Loading more playlists… (${userState.items.size}/${userState.total || "?"})`;
                 }
                 else if (!userState.fullyLoaded && userState.items.size > 0 && userState.total > userState.items.size) {
-                    userStatus.textContent = `Geladen: ${userState.items.size} von ${userState.total}`;
+                    userStatus.textContent = `Loaded: ${userState.items.size} of ${userState.total}`;
                 }
                 else if (userState.backgroundFailed) {
-                    userStatus.textContent = "Weitere Playlists konnten nicht vollständig geladen werden.";
+                    userStatus.textContent = "Additional playlists could not be fully loaded.";
                 }
                 else {
                     userStatus.textContent = "";
@@ -344,7 +333,7 @@ window.addEventListener("DOMContentLoaded", () => {
             const params = new URLSearchParams({ offset: String(Math.max(0, offset)), limit: "50" });
             const res = await fetch(`/api/user/playlists?${params.toString()}`, { cache: "no-cache" });
             if (res.status === 401) {
-                throw Object.assign(new Error("Unauthorisiert"), { code: "login" });
+                throw Object.assign(new Error("Unauthorized"), { code: "login" });
             }
             if (!res.ok) {
                 throw new Error(`HTTP ${res.status}`);
@@ -370,7 +359,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
             }
             catch (error) {
-                console.warn("Konnte Benutzer-Playlists nicht laden:", error);
+                console.warn("Failed to load user playlists:", error);
                 userState.error = error?.code === "login" ? "login" : "error";
             }
             finally {
@@ -399,7 +388,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 userState.fullyLoaded = userState.items.size >= userState.total;
             }
             catch (error) {
-                console.warn("Weitere Playlists konnten nicht geladen werden:", error);
+                console.warn("Failed to load additional playlists:", error);
                 userState.backgroundFailed = true;
             }
             finally {
@@ -551,7 +540,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
                 const apiUrl = `/api/playlist?id=${encodeURIComponent(id)}&limit=${PLAYLIST_PAGE_SIZE}`;
                 const pageUrl = `/playlist.html?id=${encodeURIComponent(id)}`;
-                console.info("Playlist-Ladevorgang gestartet", { playlistId: id });
+                console.info("Starting playlist load", { playlistId: id });
                 if (apiA) {
                     apiA.href = apiUrl;
                     apiA.textContent = `${location.origin}${apiUrl}`;
@@ -564,7 +553,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     gen.classList.add("visible");
                 submitting = true;
                 refreshButtonState();
-                showGlobalLoading("Playlist wird geladen …");
+                showGlobalLoading("Loading playlist…");
                 let response;
                 try {
                     response = await fetch(apiUrl, { cache: "no-cache" });
@@ -579,10 +568,10 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
                 catch (e) {
                     hideGlobalLoading();
-                    console.error("Playlist konnte nicht geladen werden", e);
+                    console.error("Playlist could not be loaded", e);
                     const msg = response?.status === 401
-                        ? "Bitte melde dich zuerst mit Spotify an."
-                        : "Playlist konnte nicht geladen werden. Bitte versuche es später erneut.";
+                        ? "Please log in with Spotify first."
+                        : "Playlist could not be loaded. Please try again later.";
                     alert(msg);
                 }
                 finally {
@@ -606,7 +595,7 @@ async function loadPlaylistAndNavigate(id, options = {}) {
     if (!id)
         return;
     const pageUrl = `/playlist.html?id=${encodeURIComponent(id)}`;
-    showGlobalLoading(options.title ? `${options.title} wird geladen …` : "Playlist wird geladen …");
+    showGlobalLoading(options.title ? `Loading ${options.title}…` : "Loading playlist…");
     let response;
     try {
         const query = `/api/playlist?id=${encodeURIComponent(id)}&limit=${PLAYLIST_PAGE_SIZE}`;
@@ -624,8 +613,8 @@ async function loadPlaylistAndNavigate(id, options = {}) {
         hideGlobalLoading();
         let msg = e instanceof Error ? e.message : String(e);
         if (response?.status === 401) {
-            msg = "Bitte melde dich zuerst mit Spotify an.";
+            msg = "Please log in with Spotify first.";
         }
-        alert("Playlist konnte nicht geöffnet werden: " + msg);
+        alert("Playlist could not be opened: " + msg);
     }
 }

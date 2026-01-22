@@ -1,10 +1,13 @@
 package com.hctamlyniv;
 
+import com.hctamlyniv.discogs.model.DiscogsProfile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.util.Optional;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -16,10 +19,13 @@ class DiscogsServiceNormalizationTest {
 
     private DiscogsService service;
 
+    @TempDir
+    Path tempDir;
+
     @BeforeEach
     void setUp() {
         // Create service without token (for testing utility methods)
-        service = new DiscogsService(null, "VinylMatch/Test");
+        service = new DiscogsService(null, "VinylMatch/Test", tempDir);
     }
 
     @Test
@@ -71,7 +77,7 @@ class DiscogsServiceNormalizationTest {
     @Test
     @DisplayName("Profile fetch returns empty without token")
     void fetchProfileReturnsEmptyWithoutToken() {
-        Optional<DiscogsService.DiscogsProfile> result = service.fetchProfile();
+        Optional<DiscogsProfile> result = service.fetchProfile();
         assertTrue(result.isEmpty(), "Should return empty without token");
     }
 

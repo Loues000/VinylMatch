@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Centralized configuration management.
@@ -37,6 +39,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Template: see "config/env.example"
  */
 public final class Config {
+
+    private static final Logger log = LoggerFactory.getLogger(Config.class);
 
     private static final Set<String> KNOWN_KEYS = Set.of(
             "SPOTIFY_CLIENT_ID",
@@ -109,7 +113,7 @@ public final class Config {
 
             loadedSources.add(".env");
         } catch (Exception e) {
-            System.err.println("[Config] Failed to read .env: " + e.getMessage());
+            log.warn("Failed to read .env: {}", e.getMessage());
         }
     }
 
@@ -129,7 +133,7 @@ public final class Config {
             }
             loadedSources.add(p.toAbsolutePath().normalize().toString());
         } catch (Exception e) {
-            System.err.println("[Config] Failed to read properties from " + p + ": " + e.getMessage());
+            log.warn("Failed to read properties from {}: {}", p, e.getMessage());
         }
     }
 
@@ -264,20 +268,20 @@ public final class Config {
      */
     public static void printStatus() {
         initIfNeeded();
-        System.out.println("[Config] Status:");
-        System.out.println("  Sources: " + (loadedSources.isEmpty() ? "[env only]" : String.join(", ", loadedSources) + " (+ env overrides)"));
-        System.out.println("  SPOTIFY_CLIENT_ID: " + (getSpotifyClientId() != null ? "[set]" : "[NOT SET - REQUIRED]"));
-        System.out.println("  SPOTIFY_CLIENT_SECRET: " + (getSpotifyClientSecret() != null ? "[set]" : "[NOT SET - REQUIRED]"));
-        System.out.println("  SPOTIFY_REDIRECT_URI: " + (getSpotifyRedirectUri() != null ? getSpotifyRedirectUri() : "[using default]"));
-        System.out.println("  DISCOGS_TOKEN: " + (getDiscogsToken() != null ? "[set]" : "[not set - recommended]"));
-        System.out.println("  DISCOGS_USER_AGENT: " + (getDiscogsUserAgent() != null ? getDiscogsUserAgent() : "[using default]"));
-        System.out.println("  PUBLIC_BASE_URL: " + (getPublicBaseUrl() != null ? getPublicBaseUrl() : "[not set]"));
-        System.out.println("  PORT: " + getPort());
+        log.info("[Config] Status:");
+        log.info("  Sources: {}", (loadedSources.isEmpty() ? "[env only]" : String.join(", ", loadedSources) + " (+ env overrides)"));
+        log.info("  SPOTIFY_CLIENT_ID: {}", (getSpotifyClientId() != null ? "[set]" : "[NOT SET - REQUIRED]"));
+        log.info("  SPOTIFY_CLIENT_SECRET: {}", (getSpotifyClientSecret() != null ? "[set]" : "[NOT SET - REQUIRED]"));
+        log.info("  SPOTIFY_REDIRECT_URI: {}", (getSpotifyRedirectUri() != null ? getSpotifyRedirectUri() : "[using default]"));
+        log.info("  DISCOGS_TOKEN: {}", (getDiscogsToken() != null ? "[set]" : "[not set - recommended]"));
+        log.info("  DISCOGS_USER_AGENT: {}", (getDiscogsUserAgent() != null ? getDiscogsUserAgent() : "[using default]"));
+        log.info("  PUBLIC_BASE_URL: {}", (getPublicBaseUrl() != null ? getPublicBaseUrl() : "[not set]"));
+        log.info("  PORT: {}", getPort());
 
         if (!hasSpotifyCredentials()) {
-            System.err.println("[Config] WARNING: Spotify credentials not configured!");
-            System.err.println("[Config] Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET as environment variables, or create a .env file.");
-            System.err.println("[Config] Template: config/env.example");
+            log.warn("[Config] WARNING: Spotify credentials not configured!");
+            log.warn("[Config] Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET as environment variables, or create a .env file.");
+            log.warn("[Config] Template: config/env.example");
         }
     }
 }

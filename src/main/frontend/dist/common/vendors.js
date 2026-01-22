@@ -11,7 +11,7 @@ const DEFAULT_VENDORS = [
         id: "hhv",
         label: "H",
         name: "HHV",
-        urlTemplate: "https://www.hhv.de/shop/en/search?q={query}",
+        urlTemplate: "https://www.hhv.de/en/catalog/filter/search-S11?af=true&term={query}",
         enabled: true,
     },
     {
@@ -115,7 +115,11 @@ export function buildVendorUrl(vendor, track) {
     const query = queryParts.join(" ").trim();
     if (!query) return null;
 
-    const encoded = encodeURIComponent(query);
+    let encoded = encodeURIComponent(query);
+    if (vendor.id === "hhv") {
+        // HHV expects querystring-style space encoding ("+") for the `term` parameter.
+        encoded = encoded.replace(/%20/g, "+");
+    }
     return vendor.urlTemplate.replace("{query}", encoded);
 }
 

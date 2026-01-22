@@ -140,7 +140,7 @@ export async function refreshWishlistPreview() {
         discogsUiState.wishlist = items;
         renderWishlistGrid(items, payload?.total ?? items.length);
     } catch (e) {
-        console.warn("Wunschliste konnte nicht geladen werden", e);
+        console.warn("Wishlist could not be loaded", e);
     }
 }
 
@@ -240,7 +240,7 @@ export async function refreshLibraryStatuses(state) {
         }
         refreshLibraryBadgesLocally(flagMap, state);
     } catch (e) {
-        console.warn("Konnte Discogs-Status nicht abrufen", e);
+        console.warn("Failed to fetch Discogs status", e);
     }
 }
 
@@ -273,7 +273,7 @@ function openDiscogsPopupSafely() {
     try {
         const popup = window.open(loginUrl, "_blank", "noopener,noreferrer,width=520,height=720");
         if (!popup) {
-            alert("Bitte erlaube Popups, um dich bei Discogs anzumelden.");
+            alert("Please allow popups to open the Discogs login window.");
             console.warn("Discogs login popup blocked by the browser");
             return false;
         }
@@ -282,8 +282,8 @@ function openDiscogsPopupSafely() {
         console.info("Discogs login popup opened");
         return true;
     } catch (error) {
-        console.error("Discogs login popup konnte nicht geöffnet werden", error);
-        alert("Das Discogs-Anmeldefenster konnte nicht geöffnet werden.");
+        console.error("Discogs login popup could not be opened", error);
+        alert("The Discogs login window could not be opened.");
         return false;
     }
 }

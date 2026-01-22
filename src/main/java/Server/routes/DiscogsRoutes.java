@@ -1,11 +1,19 @@
 package Server.routes;
 
 import Server.http.HttpUtils;
+import Server.http.ApiFilters;
 import Server.session.DiscogsSession;
 import Server.session.DiscogsSessionStore;
 import com.hctamlyniv.DiscogsService;
+import com.hctamlyniv.discogs.model.CurationCandidate;
+import com.hctamlyniv.discogs.model.CuratedLink;
+import com.hctamlyniv.discogs.model.DiscogsProfile;
+import com.hctamlyniv.discogs.model.LibraryFlags;
+import com.hctamlyniv.discogs.model.WishlistResult;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -22,6 +30,8 @@ import java.util.function.Supplier;
  */
 public class DiscogsRoutes {
 
+    private static final Logger log = LoggerFactory.getLogger(DiscogsRoutes.class);
+
     private final Supplier<DiscogsService> defaultDiscogsSupplier;
     private final DiscogsSessionStore sessionStore;
     private final Map<String, DiscogsService> serviceCache = new ConcurrentHashMap<>();
@@ -32,16 +42,16 @@ public class DiscogsRoutes {
     }
 
     public void register(HttpServer server) {
-        server.createContext("/api/discogs/batch", this::handleBatch);
-        server.createContext("/api/discogs/search", this::handleSearch);
-        server.createContext("/api/discogs/status", this::handleStatus);
-        server.createContext("/api/discogs/login", this::handleLogin);
-        server.createContext("/api/discogs/logout", this::handleLogout);
-        server.createContext("/api/discogs/wishlist/add", this::handleWishlistAdd);
-        server.createContext("/api/discogs/wishlist", this::handleWishlist);
-        server.createContext("/api/discogs/library-status", this::handleLibraryStatus);
-        server.createContext("/api/discogs/curation/candidates", this::handleCurationCandidates);
-        server.createContext("/api/discogs/curation/save", this::handleCurationSave);
+        server.createContext("/api/discogs/batch", this::handleBatch).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/search", this::handleSearch).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/status", this::handleStatus).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/login", this::handleLogin).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/logout", this::handleLogout).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/wishlist/add", this::handleWishlistAdd).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/wishlist", this::handleWishlist).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/library-status", this::handleLibraryStatus).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/curation/candidates", this::handleCurationCandidates).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/curation/save", this::handleCurationSave).getFilters().add(ApiFilters.rateLimiting());
     }
 
     // =========================================================================
@@ -52,7 +62,7 @@ public class DiscogsRoutes {
         try {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
@@ -60,15 +70,11 @@ public class DiscogsRoutes {
             Map<?, ?> payload = HttpUtils.getMapper().readValue(body, Map.class);
             Object tracksObj = payload.get("tracks");
             if (!(tracksObj instanceof List<?> tracksList) || tracksList.isEmpty()) {
-                HttpUtils.sendError(exchange, 400, "Payload muss ein 'tracks'-Array enthalten");
+                HttpUtils.sendApiError(exchange, 400, "invalid_payload", "Payload must contain a non-empty 'tracks' array");
                 return;
             }
 
-            DiscogsService discogs = defaultDiscogsSupplier.get();
-            if (discogs == null) {
-                HttpUtils.sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
-                return;
-            }
+            DiscogsService discogs = resolveDiscogsService(exchange);
 
             List<Map<String, Object>> results = new ArrayList<>();
             for (Object entry : tracksList) {
@@ -107,7 +113,8 @@ public class DiscogsRoutes {
 
             HttpUtils.sendJson(exchange, 200, Map.of("results", results));
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler bei Discogs-Batch: " + e.getMessage());
+            log.warn("Discogs batch failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_batch_failed", "Discogs batch search failed");
         }
     }
 
@@ -119,7 +126,7 @@ public class DiscogsRoutes {
         try {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
@@ -131,25 +138,22 @@ public class DiscogsRoutes {
             String trackTitle = HttpUtils.stringValue(payload.get("track"));
 
             if (artist == null || album == null) {
-                HttpUtils.sendError(exchange, 400, "Felder 'artist' und 'album' sind erforderlich");
+                HttpUtils.sendApiError(exchange, 400, "invalid_payload", "Fields 'artist' and 'album' are required");
                 return;
             }
 
-            DiscogsService discogs = defaultDiscogsSupplier.get();
-            if (discogs == null) {
-                HttpUtils.sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
-                return;
-            }
+            DiscogsService discogs = resolveDiscogsService(exchange);
 
             Optional<String> urlOpt = discogs.findAlbumUri(artist, album, year, trackTitle);
             if (urlOpt.isEmpty()) {
-                HttpUtils.sendError(exchange, 404, "Kein Discogs-Treffer gefunden");
+                HttpUtils.sendApiError(exchange, 404, "not_found", "No Discogs match found");
                 return;
             }
 
             HttpUtils.sendJson(exchange, 200, Map.of("url", urlOpt.get()));
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler bei Discogs-Suche: " + e.getMessage());
+            log.warn("Discogs search failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_search_failed", "Discogs search failed");
         }
     }
 
@@ -161,7 +165,7 @@ public class DiscogsRoutes {
         try {
             HttpUtils.addCorsHeaders(exchange);
             if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur GET erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only GET is supported");
                 return;
             }
 
@@ -174,7 +178,8 @@ public class DiscogsRoutes {
             }
             HttpUtils.sendJson(exchange, 200, payload);
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler bei Discogs-Status: " + e.getMessage());
+            log.warn("Discogs status failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_status_failed", "Failed to read Discogs status");
         }
     }
 
@@ -182,7 +187,7 @@ public class DiscogsRoutes {
         try {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
@@ -193,15 +198,15 @@ public class DiscogsRoutes {
             String userAgent = userAgentObj != null ? HttpUtils.stringValue(userAgentObj) : com.hctamlyniv.Config.getDiscogsUserAgent();
 
             if (token == null || token.isBlank()) {
-                HttpUtils.sendError(exchange, 400, "Discogs-User-Token erforderlich");
+                HttpUtils.sendApiError(exchange, 400, "missing_discogs_token", "Discogs user token is required");
                 return;
             }
 
             String ua = (userAgent == null || userAgent.isBlank()) ? "VinylMatch/1.0" : userAgent;
             DiscogsService service = getOrCreateService(token, ua);
-            DiscogsService.DiscogsProfile profile = service.fetchProfile().orElse(null);
+            DiscogsProfile profile = service.fetchProfile().orElse(null);
             if (profile == null || profile.username() == null) {
-                HttpUtils.sendError(exchange, 401, "Discogs-Token ungültig oder Zugriff verweigert");
+                HttpUtils.sendApiError(exchange, 401, "discogs_login_failed", "Discogs token invalid or access denied");
                 return;
             }
 
@@ -211,7 +216,8 @@ public class DiscogsRoutes {
             response.put("name", session.displayName());
             HttpUtils.sendJson(exchange, 200, response);
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler beim Discogs-Login: " + e.getMessage());
+            log.warn("Discogs login failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_login_failed", "Discogs login failed");
         }
     }
 
@@ -219,14 +225,15 @@ public class DiscogsRoutes {
         try {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
             sessionStore.destroySession(exchange);
             HttpUtils.sendNoContent(exchange);
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler beim Discogs-Logout: " + e.getMessage());
+            log.warn("Discogs logout failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_logout_failed", "Discogs logout failed");
         }
     }
 
@@ -238,13 +245,13 @@ public class DiscogsRoutes {
         try {
             HttpUtils.addCorsHeaders(exchange);
             if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur GET erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only GET is supported");
                 return;
             }
 
             DiscogsSession session = sessionStore.getSession(exchange);
             if (session == null || session.username() == null) {
-                HttpUtils.sendError(exchange, 401, "Discogs-Login erforderlich");
+                HttpUtils.sendApiError(exchange, 401, "discogs_login_required", "Discogs login required");
                 return;
             }
 
@@ -258,10 +265,11 @@ public class DiscogsRoutes {
             }
 
             DiscogsService service = getOrCreateService(session.token(), session.userAgent());
-            DiscogsService.WishlistResult wishlist = service.fetchWishlist(session.username(), 1, limit);
+            WishlistResult wishlist = service.fetchWishlist(session.username(), 1, limit);
             HttpUtils.sendJson(exchange, 200, wishlist);
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler beim Laden der Wunschliste: " + e.getMessage());
+            log.warn("Discogs wishlist failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_wishlist_failed", "Failed to load Discogs wishlist");
         }
     }
 
@@ -269,13 +277,13 @@ public class DiscogsRoutes {
         try {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
             DiscogsSession session = sessionStore.getSession(exchange);
             if (session == null || session.username() == null) {
-                HttpUtils.sendError(exchange, 401, "Discogs-Login erforderlich");
+                HttpUtils.sendApiError(exchange, 401, "discogs_login_required", "Discogs login required");
                 return;
             }
 
@@ -283,14 +291,14 @@ public class DiscogsRoutes {
             Map<?, ?> payload = HttpUtils.getMapper().readValue(body, Map.class);
             String url = HttpUtils.stringValue(payload.get("url"));
             if (!HttpUtils.isDiscogsWebUrl(url)) {
-                HttpUtils.sendError(exchange, 400, "Parameter 'url' erforderlich");
+                HttpUtils.sendApiError(exchange, 400, "invalid_url", "Parameter 'url' is required");
                 return;
             }
 
             DiscogsService service = getOrCreateService(session.token(), session.userAgent());
             Integer releaseId = service.resolveReleaseIdFromUrl(url).orElse(null);
             if (releaseId == null) {
-                HttpUtils.sendError(exchange, 422, "Konnte Release-ID aus URL nicht bestimmen");
+                HttpUtils.sendApiError(exchange, 422, "invalid_url", "Could not resolve release ID from URL");
                 return;
             }
 
@@ -300,7 +308,8 @@ public class DiscogsRoutes {
                     "releaseId", releaseId
             ));
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler beim Hinzufügen zur Wunschliste: " + e.getMessage());
+            log.warn("Discogs wantlist add failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_wantlist_add_failed", "Failed to add to Discogs wantlist");
         }
     }
 
@@ -312,13 +321,13 @@ public class DiscogsRoutes {
         try {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
             DiscogsSession session = sessionStore.getSession(exchange);
             if (session == null || session.username() == null) {
-                HttpUtils.sendError(exchange, 401, "Discogs-Login erforderlich");
+                HttpUtils.sendApiError(exchange, 401, "discogs_login_required", "Discogs login required");
                 return;
             }
 
@@ -326,7 +335,7 @@ public class DiscogsRoutes {
             Map<?, ?> payload = HttpUtils.getMapper().readValue(body, Map.class);
             Object urlsObj = payload.get("urls");
             if (!(urlsObj instanceof List<?> list) || list.isEmpty()) {
-                HttpUtils.sendError(exchange, 400, "Payload muss 'urls' enthalten");
+                HttpUtils.sendApiError(exchange, 400, "invalid_payload", "Payload must contain a non-empty 'urls' array");
                 return;
             }
 
@@ -337,7 +346,7 @@ public class DiscogsRoutes {
                 }
             }
             if (urls.isEmpty()) {
-                HttpUtils.sendError(exchange, 400, "Keine gültigen URLs gefunden");
+                HttpUtils.sendApiError(exchange, 400, "invalid_payload", "No valid Discogs URLs provided");
                 return;
             }
 
@@ -347,11 +356,11 @@ public class DiscogsRoutes {
                 service.resolveReleaseIdFromUrl(url).ifPresent(id -> resolved.put(url, id));
             }
 
-            Map<Integer, DiscogsService.LibraryFlags> flags = service.lookupLibraryFlags(session.username(), new HashSet<>(resolved.values()));
+            Map<Integer, LibraryFlags> flags = service.lookupLibraryFlags(session.username(), new HashSet<>(resolved.values()));
             List<Map<String, Object>> results = new ArrayList<>();
             for (String url : urls) {
                 Integer id = resolved.get(url);
-                DiscogsService.LibraryFlags flag = (id == null) ? null : flags.get(id);
+                LibraryFlags flag = (id == null) ? null : flags.get(id);
                 Map<String, Object> entry = new HashMap<>();
                 entry.put("url", url);
                 entry.put("releaseId", id);
@@ -362,7 +371,8 @@ public class DiscogsRoutes {
 
             HttpUtils.sendJson(exchange, 200, Map.of("results", results));
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler beim Laden des Library-Status: " + e.getMessage());
+            log.warn("Discogs library status failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_library_failed", "Failed to load Discogs library status");
         }
     }
 
@@ -374,7 +384,7 @@ public class DiscogsRoutes {
         try {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
@@ -386,21 +396,22 @@ public class DiscogsRoutes {
             String trackTitle = HttpUtils.stringValue(payload.get("trackTitle"));
 
             if (artist == null && album == null && trackTitle == null) {
-                HttpUtils.sendError(exchange, 400, "Ungültige Anfragedaten");
+                HttpUtils.sendApiError(exchange, 400, "invalid_payload", "Invalid request payload");
                 return;
             }
 
             DiscogsService discogs = defaultDiscogsSupplier.get();
             if (discogs == null) {
-                HttpUtils.sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
+                HttpUtils.sendApiError(exchange, 503, "discogs_not_configured", "Discogs token not configured");
                 return;
             }
 
-            List<DiscogsService.CurationCandidate> candidates = discogs.fetchCurationCandidates(
+            List<CurationCandidate> candidates = discogs.fetchCurationCandidates(
                     artist, album, year, trackTitle, 4);
             HttpUtils.sendJson(exchange, 200, Map.of("candidates", candidates));
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler beim Laden der Curation-Kandidaten: " + e.getMessage());
+            log.warn("Discogs curation candidates failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_curation_failed", "Failed to load curation candidates");
         }
     }
 
@@ -408,7 +419,7 @@ public class DiscogsRoutes {
         try {
             if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur POST erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
                 return;
             }
 
@@ -423,26 +434,39 @@ public class DiscogsRoutes {
             String thumb = HttpUtils.stringValue(payload.get("thumb"));
 
             if (!HttpUtils.isDiscogsWebUrl(url)) {
-                HttpUtils.sendError(exchange, 400, "Parameter 'url' erforderlich");
+                HttpUtils.sendApiError(exchange, 400, "invalid_url", "Parameter 'url' is required");
                 return;
             }
 
             DiscogsService discogs = defaultDiscogsSupplier.get();
             if (discogs == null) {
-                HttpUtils.sendError(exchange, 503, "Discogs-Token fehlt (DISCOGS_TOKEN)");
+                HttpUtils.sendApiError(exchange, 503, "discogs_not_configured", "Discogs token not configured");
                 return;
             }
 
-            DiscogsService.CuratedLink saved = discogs.saveCuratedLink(artist, album, year, trackTitle, barcode, url, thumb);
+            CuratedLink saved = discogs.saveCuratedLink(artist, album, year, trackTitle, barcode, url, thumb);
             HttpUtils.sendJson(exchange, 200, Map.of("saved", true, "entry", saved));
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Fehler beim Speichern des kuratierten Links: " + e.getMessage());
+            log.warn("Discogs curation save failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_curation_save_failed", "Failed to save curated link");
         }
     }
 
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    private DiscogsService resolveDiscogsService(HttpExchange exchange) {
+        DiscogsSession session = sessionStore.getSession(exchange);
+        if (session != null && session.token() != null && !session.token().isBlank()) {
+            DiscogsService fromSession = getOrCreateService(session.token(), session.userAgent());
+            if (fromSession != null) {
+                return fromSession;
+            }
+        }
+        DiscogsService fallback = defaultDiscogsSupplier.get();
+        return fallback != null ? fallback : new DiscogsService(null, "VinylMatch/1.0");
+    }
 
     private DiscogsService getOrCreateService(String token, String userAgent) {
         if (token == null || token.isBlank()) {

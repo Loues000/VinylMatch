@@ -7,8 +7,9 @@
     "outDir": "./dist",
     "strict": true,
     "sourceMap": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "allowJs": true
   },
-  "include": ["**/*.ts"],
+  "include": ["**/*.ts", "**/*.js"],
   "exclude": ["node_modules", "dist"]
 }

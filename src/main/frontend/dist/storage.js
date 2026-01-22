@@ -24,7 +24,7 @@ export function writeRecents(list) {
         localStorage.setItem(LS_RECENTS, JSON.stringify(list));
     }
     catch (e) {
-        console.warn("Konnte Recents nicht speichern:", e);
+        console.warn("Could not save recents:", e);
     }
 }
 function readCacheIndex() {
@@ -37,7 +37,7 @@ function writeCacheIndex(list) {
         localStorage.setItem(LS_CACHE_INDEX, JSON.stringify(list));
     }
     catch (e) {
-        console.warn("Konnte Playlist-Index nicht speichern:", e);
+        console.warn("Could not save playlist cache index:", e);
     }
 }
 function updateCacheIndex(id) {
@@ -100,7 +100,7 @@ export function writeCachedPlaylist(id, data) {
         localStorage.setItem(cacheKeyFor(id), JSON.stringify(data));
     }
     catch (e) {
-        console.warn("Konnte Playlist nicht speichern:", e);
+        console.warn("Could not save playlist cache:", e);
     }
     updateCacheIndex(id);
 }
@@ -125,7 +125,7 @@ export function mergePlaylistChunk(id, chunk, existing) {
         : existing?.totalTracks ?? (offset + items.length);
     const base = {
         id,
-        playlistName: chunk?.playlistName ?? existing?.playlistName ?? "Unbekannte Playlist",
+        playlistName: chunk?.playlistName ?? existing?.playlistName ?? "Unknown playlist",
         playlistCoverUrl: chunk?.playlistCoverUrl ?? existing?.playlistCoverUrl ?? null,
         playlistUrl: chunk?.playlistUrl ?? existing?.playlistUrl ?? null,
         totalTracks: total,
@@ -150,7 +150,7 @@ export function mergePlaylistChunk(id, chunk, existing) {
     for (let i = 0; i < items.length; i++) {
         target[offset + i] = items[i];
     }
-    // Entferne Lücken am Ende
+    // Remove trailing holes
     while (target.length && target[target.length - 1] === undefined) {
         target.pop();
     }

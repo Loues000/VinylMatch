@@ -15,11 +15,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Assembles PlaylistData from Spotify API responses.
  */
 public class PlaylistAssembler {
+
+    private static final Logger log = LoggerFactory.getLogger(PlaylistAssembler.class);
 
     private final BarcodeExtractor barcodeExtractor;
     private final DiscogsService discogsService;
@@ -63,9 +67,9 @@ public class PlaylistAssembler {
                     tracks.add(trackData);
                 }
             } else if (item instanceof Episode episode) {
-                System.out.println("Überspringe Podcast-Episode: " + episode.getName());
+                log.debug("Skipping podcast episode: {}", episode.getName());
             } else if (item != null) {
-                System.out.println("Unbekannter Item-Typ: " + item.getClass().getName());
+                log.debug("Skipping unknown playlist item type: {}", item.getClass().getName());
             }
         }
 

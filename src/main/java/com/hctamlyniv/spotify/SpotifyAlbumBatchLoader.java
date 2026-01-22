@@ -4,9 +4,10 @@ import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.model_objects.specification.Album;
 import se.michaelthelin.spotify.model_objects.specification.PlaylistTrack;
 import se.michaelthelin.spotify.model_objects.specification.Track;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.Set;
 public class SpotifyAlbumBatchLoader {
 
     private static final int BATCH_SIZE = 20; // Spotify API limit for getSeveralAlbums
+    private static final Logger log = LoggerFactory.getLogger(SpotifyAlbumBatchLoader.class);
 
     private final SpotifyApi spotifyApi;
 
@@ -75,7 +77,7 @@ public class SpotifyAlbumBatchLoader {
                     }
                 }
             } catch (Exception e) {
-                System.err.println("[Spotify] Fehler beim Laden der Alben (Batch " + (i / BATCH_SIZE + 1) + "): " + e.getMessage());
+                log.warn("Spotify album batch load failed (batch {}): {}", (i / BATCH_SIZE + 1), e.getMessage());
             }
         }
 

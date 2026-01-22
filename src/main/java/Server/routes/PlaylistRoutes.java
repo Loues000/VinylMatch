@@ -5,11 +5,14 @@ import Server.PlaylistSummary;
 import Server.UserPlaylistsResponse;
 import Server.cache.PlaylistCache;
 import Server.cache.PlaylistCacheKey;
+import Server.http.ApiFilters;
 import Server.http.HttpUtils;
 import com.hctamlyniv.DiscogsService;
 import com.hctamlyniv.ReceivingData;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
 import se.michaelthelin.spotify.model_objects.specification.Paging;
@@ -26,21 +29,21 @@ import java.util.function.Supplier;
  */
 public class PlaylistRoutes {
 
-    private final int port;
+    private static final Logger log = LoggerFactory.getLogger(PlaylistRoutes.class);
+
     private final PlaylistCache playlistCache;
     private final Supplier<DiscogsService> discogsServiceSupplier;
     private final AuthRoutes authRoutes;
 
-    public PlaylistRoutes(int port, PlaylistCache playlistCache, Supplier<DiscogsService> discogsServiceSupplier, AuthRoutes authRoutes) {
-        this.port = port;
+    public PlaylistRoutes(PlaylistCache playlistCache, Supplier<DiscogsService> discogsServiceSupplier, AuthRoutes authRoutes) {
         this.playlistCache = playlistCache;
         this.discogsServiceSupplier = discogsServiceSupplier;
         this.authRoutes = authRoutes;
     }
 
     public void register(HttpServer server) {
-        server.createContext("/api/playlist", this::handleGetPlaylist);
-        server.createContext("/api/user/playlists", this::handleGetUserPlaylists);
+        server.createContext("/api/playlist", this::handleGetPlaylist).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/user/playlists", this::handleGetUserPlaylists).getFilters().add(ApiFilters.rateLimiting());
     }
 
     private void handleGetPlaylist(HttpExchange exchange) throws IOException {
@@ -52,14 +55,14 @@ public class PlaylistRoutes {
                 return;
             }
             if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                HttpUtils.sendError(exchange, 405, "Nur GET erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only GET is supported");
                 return;
             }
 
             Map<String, String> params = HttpUtils.parseQueryParams(exchange.getRequestURI().getRawQuery());
             String id = params.get("id");
             if (id == null || id.isBlank()) {
-                HttpUtils.sendError(exchange, 400, "Missing or invalid 'id' query parameter");
+                HttpUtils.sendApiError(exchange, 400, "missing_playlist_id", "Missing or invalid 'id' query parameter");
                 return;
             }
 
@@ -69,7 +72,7 @@ public class PlaylistRoutes {
                 try {
                     offset = Math.max(0, Integer.parseInt(offsetParam));
                 } catch (NumberFormatException e) {
-                    HttpUtils.sendError(exchange, 400, "Invalid 'offset' query parameter");
+                    HttpUtils.sendApiError(exchange, 400, "invalid_offset", "Invalid 'offset' query parameter");
                     return;
                 }
             }
@@ -85,18 +88,18 @@ public class PlaylistRoutes {
                         limit = -1;
                     }
                 } catch (NumberFormatException e) {
-                    HttpUtils.sendError(exchange, 400, "Invalid 'limit' query parameter");
+                    HttpUtils.sendApiError(exchange, 400, "invalid_limit", "Invalid 'limit' query parameter");
                     return;
                 }
             }
 
             String limitLog = (limit > 0) ? String.valueOf(limit) : "all";
-            System.out.println("[API] Requested: http://localhost:" + port + "/api/playlist?id=" + id + "&offset=" + offset + "&limit=" + limitLog);
+            log.info("GET /api/playlist id={} offset={} limit={}", id, offset, limitLog);
 
             // Get token using session-aware auth
             String token = authRoutes.getAccessToken(exchange);
             if (token == null || token.isBlank()) {
-                HttpUtils.sendError(exchange, 401, "Spotify-Login erforderlich. Bitte über den Login-Button anmelden.");
+                HttpUtils.sendApiError(exchange, 401, "spotify_login_required", "Spotify login required");
                 return;
             }
 
@@ -111,7 +114,7 @@ public class PlaylistRoutes {
                 playlistData = rd.loadPlaylistData(offset, limit);
                 if (playlistData == null) {
                     playlistCache.remove(cacheKey);
-                    HttpUtils.sendError(exchange, 500, "Failed to load playlist data");
+                    HttpUtils.sendApiError(exchange, 500, "playlist_load_failed", "Failed to load playlist data");
                     return;
                 }
                 playlistCache.store(cacheKey, playlistData);
@@ -122,7 +125,8 @@ public class PlaylistRoutes {
             if (cacheKey != null) {
                 playlistCache.remove(cacheKey);
             }
-            HttpUtils.sendError(exchange, 500, "Error loading playlist: " + e.getMessage());
+            log.warn("Playlist load failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "playlist_load_failed", "Failed to load playlist");
         }
     }
 
@@ -135,13 +139,13 @@ public class PlaylistRoutes {
                 return;
             }
             if (!"GET".equalsIgnoreCase(method)) {
-                HttpUtils.sendError(exchange, 405, "Nur GET erlaubt");
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only GET is supported");
                 return;
             }
 
             String token = authRoutes.getAccessToken(exchange);
             if (token == null || token.isBlank()) {
-                HttpUtils.sendError(exchange, 401, "Spotify-Login erforderlich. Bitte über den Login-Button anmelden.");
+                HttpUtils.sendApiError(exchange, 401, "spotify_login_required", "Spotify login required");
                 return;
             }
 
@@ -152,7 +156,7 @@ public class PlaylistRoutes {
                 try {
                     offset = Math.max(0, Integer.parseInt(offsetParam));
                 } catch (NumberFormatException e) {
-                    HttpUtils.sendError(exchange, 400, "Invalid 'offset' query parameter");
+                    HttpUtils.sendApiError(exchange, 400, "invalid_offset", "Invalid 'offset' query parameter");
                     return;
                 }
             }
@@ -165,7 +169,7 @@ public class PlaylistRoutes {
                         limit = Math.min(parsedLimit, 50);
                     }
                 } catch (NumberFormatException e) {
-                    HttpUtils.sendError(exchange, 400, "Invalid 'limit' query parameter");
+                    HttpUtils.sendApiError(exchange, 400, "invalid_limit", "Invalid 'limit' query parameter");
                     return;
                 }
             }
@@ -201,9 +205,11 @@ public class PlaylistRoutes {
             UserPlaylistsResponse payload = new UserPlaylistsResponse(summaries, total, offset, limit);
             HttpUtils.sendJson(exchange, 200, payload);
         } catch (SpotifyWebApiException e) {
-            HttpUtils.sendError(exchange, 502, "Spotify API error: " + e.getMessage());
+            log.warn("Spotify API error: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 502, "spotify_api_error", "Spotify API error");
         } catch (Exception e) {
-            HttpUtils.sendError(exchange, 500, "Error loading user playlists: " + e.getMessage());
+            log.warn("User playlists load failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "user_playlists_failed", "Failed to load user playlists");
         }
     }
 }

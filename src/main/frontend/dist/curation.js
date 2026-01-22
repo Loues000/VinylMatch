@@ -67,8 +67,8 @@ async function injectTemplate(container, templateUrl) {
         container.innerHTML = await res.text();
     }
     catch (error) {
-        console.warn("Konnte Curation-Template nicht laden", error);
-        container.innerHTML = "<p class=\"muted\">Curation-Panel konnte nicht geladen werden.</p>";
+        console.warn("Failed to load curation template", error);
+        container.innerHTML = "<p class=\"muted\">Curation panel could not be loaded.</p>";
     }
 }
 
@@ -107,7 +107,7 @@ function renderCurationAlbum(container, item, placeholderImage) {
     if (empty)
         empty.classList.add("hidden");
     if (!item) {
-        resetCurationUi(container, "Keine Playlist-Titel geladen.");
+        resetCurationUi(container, "No playlist tracks loaded.");
         return;
     }
     const img = document.createElement("img");
@@ -118,20 +118,20 @@ function renderCurationAlbum(container, item, placeholderImage) {
     meta.className = "meta";
     const title = document.createElement("div");
     title.className = "title";
-    title.textContent = item.album || "Unbekanntes Album";
+    title.textContent = item.album || "Unknown album";
     const artist = document.createElement("div");
     artist.className = "artist";
-    artist.textContent = item.artist || "Unbekannter Artist";
+    artist.textContent = item.artist || "Unknown artist";
     const hint = document.createElement("div");
     hint.className = "hint";
-    hint.textContent = item.trackName ? `aus: ${item.trackName}` : "Playlist-Album";
+    hint.textContent = item.trackName ? `from: ${item.trackName}` : "Playlist album";
     meta.appendChild(title);
     meta.appendChild(artist);
     meta.appendChild(hint);
     if (Array.isArray(item.missing) && item.missing.length) {
         const missing = document.createElement("div");
         missing.className = "missing";
-        missing.textContent = `Fehlend: ${item.missing.join(" · ")}`;
+        missing.textContent = `Missing: ${item.missing.join(" • ")}`;
         meta.appendChild(missing);
     }
     album.appendChild(img);
@@ -155,12 +155,12 @@ function createCandidateCard(container, item, candidate, onCandidateSaved) {
     origin.textContent = source;
     const urlLabel = document.createElement("div");
     urlLabel.className = "url";
-    urlLabel.textContent = safeUrl || "ohne URL";
+    urlLabel.textContent = safeUrl || "no URL";
     const openLink = document.createElement("a");
     openLink.href = safeUrl || "#";
     openLink.target = "_blank";
     openLink.rel = "noopener noreferrer";
-    openLink.textContent = "Öffnen";
+    openLink.textContent = "Open";
     bar.appendChild(origin);
     bar.appendChild(urlLabel);
     bar.appendChild(openLink);
@@ -182,7 +182,7 @@ function createCandidateCard(container, item, candidate, onCandidateSaved) {
     meta.className = "candidate-meta";
     const title = document.createElement("div");
     title.className = "title";
-    title.textContent = candidate.title || "Ohne Titel";
+    title.textContent = candidate.title || "Untitled";
     const details = document.createElement("div");
     details.className = "details";
     const detailParts = [];
@@ -194,7 +194,7 @@ function createCandidateCard(container, item, candidate, onCandidateSaved) {
         detailParts.push(candidate.country);
     if (candidate.format)
         detailParts.push(candidate.format);
-    details.textContent = detailParts.join(" • ") || "Discogs-Ergebnis";
+    details.textContent = detailParts.join(" • ") || "Discogs result";
     meta.appendChild(title);
     meta.appendChild(details);
     const actions = document.createElement("div");
@@ -202,7 +202,7 @@ function createCandidateCard(container, item, candidate, onCandidateSaved) {
     const selectButton = document.createElement("button");
     selectButton.type = "button";
     selectButton.className = isDiscogs ? "btn" : "btn ghost";
-    selectButton.textContent = isDiscogs ? "Als korrekt sichern" : "Im Browser öffnen";
+    selectButton.textContent = isDiscogs ? "Save match" : "Open in browser";
     if (isDiscogs) {
         selectButton.addEventListener("click", () => selectCandidate(container, item, candidate, selectButton, onCandidateSaved));
     }
@@ -225,7 +225,7 @@ function renderCurationCandidates(container, item, candidates, onCandidateSaved)
     grid.textContent = "";
     if (!Array.isArray(candidates) || !candidates.length) {
         if (empty) {
-            empty.textContent = "Keine Kandidaten gefunden. Versuch es mit dem nächsten Album.";
+            empty.textContent = "No candidates found. Try the next album.";
             empty.classList.remove("hidden");
         }
         return;
@@ -246,7 +246,7 @@ async function loadCurationCandidates(container, item) {
     curationState.loading = true;
     const empty = select(container, "#curation-empty");
     if (empty) {
-        empty.textContent = "Discogs-Kandidaten werden geladen …";
+        empty.textContent = "Loading Discogs candidates…";
         empty.classList.remove("hidden");
     }
     try {
@@ -278,7 +278,7 @@ async function loadCurationCandidates(container, item) {
             {
                 source: "Discogs (Google)",
                 url: `https://www.google.com/search?q=${encodeURIComponent("site:discogs.com " + query)}`,
-                title: item.album || "Discogs Suche",
+                title: item.album || "Discogs search",
                 thumb: item.coverUrl,
                 artist: item.artist,
                 year: item.releaseYear,
@@ -286,7 +286,7 @@ async function loadCurationCandidates(container, item) {
             {
                 source: "HHV",
                 url: `https://www.google.com/search?q=${encodeURIComponent("site:hhv.de " + query + " vinyl")}`,
-                title: "HHV Ergebnis",
+                title: "HHV result",
                 thumb: item.coverUrl,
                 artist: item.artist,
                 year: item.releaseYear,
@@ -294,7 +294,7 @@ async function loadCurationCandidates(container, item) {
             {
                 source: "JPC",
                 url: `https://www.google.com/search?q=${encodeURIComponent("site:jpc.de " + query + " vinyl")}`,
-                title: "JPC Ergebnis",
+                title: "JPC result",
                 thumb: item.coverUrl,
                 artist: item.artist,
                 year: item.releaseYear,
@@ -302,7 +302,7 @@ async function loadCurationCandidates(container, item) {
             {
                 source: "Amazon",
                 url: `https://www.google.com/search?q=${encodeURIComponent("site:amazon.de " + searchTerm)}`,
-                title: "Amazon Ergebnis",
+                title: "Amazon result",
                 thumb: item.coverUrl,
                 artist: item.artist,
                 year: item.releaseYear,
@@ -311,8 +311,8 @@ async function loadCurationCandidates(container, item) {
         return [...normalizedDiscogs, ...storeCandidates];
     }
     catch (e) {
-        console.warn("Konnte Curation-Kandidaten nicht laden", e);
-        resetCurationUi(container, "Fehler beim Laden der Kandidaten.");
+        console.warn("Failed to load curation candidates", e);
+        resetCurationUi(container, "Failed to load candidates.");
         return [];
     }
     finally {
@@ -326,7 +326,7 @@ async function selectCandidate(container, item, candidate, button, onCandidateSa
         return;
     curationState.saving = true;
     const original = button.textContent;
-    button.textContent = "Speichert …";
+    button.textContent = "Saving…";
     button.disabled = true;
     try {
         const res = await fetch("/api/discogs/curation/save", {
@@ -343,12 +343,12 @@ async function selectCandidate(container, item, candidate, button, onCandidateSa
         });
         if (!res.ok)
             throw new Error("HTTP " + res.status);
-        button.textContent = "Gespeichert ✔";
+        button.textContent = "Saved";
         onCandidateSaved?.(item, candidate.url);
         setTimeout(() => (button.textContent = original), 1200);
     }
     catch (e) {
-        alert("Konnte Link nicht speichern: " + (e instanceof Error ? e.message : String(e)));
+        alert("Could not save link: " + (e instanceof Error ? e.message : String(e)));
         button.textContent = original;
     }
     finally {
@@ -359,7 +359,7 @@ async function selectCandidate(container, item, candidate, button, onCandidateSa
 
 async function showCurationItem(container, step, placeholderImage, onCandidateSaved) {
     if (!curationState.queue.length) {
-        resetCurationUi(container, "Keine Playlist geladen.");
+        resetCurationUi(container, "No playlist loaded.");
         updateCurationProgress(container);
         return;
     }
@@ -379,7 +379,7 @@ async function initCurationPanel(options = {}) {
     if (templatePath) {
         await injectTemplate(container, templatePath);
     }
-    resetCurationUi(container, "Noch keine Playlist geladen.");
+    resetCurationUi(container, "No playlist loaded yet.");
     updateCurationProgress(container);
     const placeholderImage = options.placeholderImage ?? "";
     const buildQueue = typeof options.buildQueue === "function" ? options.buildQueue : () => [];
@@ -391,7 +391,7 @@ async function initCurationPanel(options = {}) {
         curationState.queue = buildQueue();
         curationState.index = 0;
         if (!curationState.queue.length) {
-            resetCurationUi(container, "Keine Playlist-Tracks gefunden.");
+            resetCurationUi(container, "No playlist tracks found.");
             updateCurationProgress(container);
             return;
         }
@@ -408,7 +408,7 @@ async function initCurationPanel(options = {}) {
     };
 }
 
-function showLoading(message = "Playlist wird geladen …") {
+function showLoading(message = "Loading…") {
     const overlay = document.getElementById("global-loading");
     const text = document.getElementById("global-loading-text");
     overlay?.classList.remove("hidden");
@@ -448,13 +448,13 @@ function updateSummary() {
     if (!title || !details)
         return;
     if (!pageState.aggregated) {
-        title.textContent = "Noch nichts geladen";
-        details.textContent = "Füge oben eine Playlist hinzu, um den Curation-Modus zu starten.";
+        title.textContent = "Nothing loaded yet";
+        details.textContent = "Paste a playlist link above to start curation.";
         return;
     }
     title.textContent = pageState.aggregated.playlistName || "Playlist";
     const trackCount = Array.isArray(pageState.aggregated.tracks) ? pageState.aggregated.tracks.length : 0;
-    details.textContent = `${trackCount} Titel geladen · nur unvollständige Alben in der Queue`;
+    details.textContent = `${trackCount} tracks loaded • only incomplete albums in the queue`;
 }
 
 async function fetchPlaylist(id) {
@@ -505,12 +505,12 @@ async function loadPlaylistFromInput() {
     const textarea = document.getElementById("curation-playlist-url");
     const id = textarea ? getPlaylistIdFromUrl(textarea.value.trim()) : null;
     if (!id) {
-        alert("Bitte füge eine gültige Spotify-Playlist ein.");
+        alert("Please paste a valid Spotify playlist URL.");
         return;
     }
-    console.info("Playlist-Ladevorgang gestartet", { playlistId: id });
+    console.info("Starting playlist load", { playlistId: id });
     pageState.loading = true;
-    showLoading("Playlist wird geladen …");
+    showLoading("Loading…");
     try {
         pageState.id = id;
         pageState.aggregated = await fetchPlaylist(id);
@@ -518,8 +518,8 @@ async function loadPlaylistFromInput() {
         pageState.curation?.refreshQueue();
     }
     catch (e) {
-        console.error("Playlist konnte nicht geladen werden", e);
-        alert("Playlist konnte nicht geladen werden. Bitte versuche es später erneut.");
+        console.error("Playlist could not be loaded", e);
+        alert("Playlist could not be loaded. Please try again later.");
     }
     finally {
         hideLoading();
@@ -551,6 +551,6 @@ export { initCurationPanel };
 
 window.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById("curation-page")) {
-        initCurationPage().catch((error) => console.warn("Curation-Seite konnte nicht initialisiert werden", error));
+        initCurationPage().catch((error) => console.warn("Curation page could not be initialized", error));
     }
 });

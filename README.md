@@ -1,153 +1,134 @@
-# 🎵 VinylMatch
+# VinylMatch
 
-VinylMatch is a lightweight web application and API for **matching Spotify playlist tracks to their corresponding vinyl releases on Discogs and other vinyl webstores**.  
+VinylMatch is a lightweight web app + API that matches Spotify playlist tracks to their corresponding vinyl releases on Discogs (and optionally links out to other vinyl webstores).
 
-It is designed for collectors, DJs, archivists, and enthusiasts who want to connect their digital collections with physical records by automatically finding the correct Discogs album/master entries for tracks in a given Spotify playlist.
+It's built for collectors, DJs, archivists, and anyone who wants to connect a digital playlist to physical releases without manually searching every record.
 
----
+## Features
 
-## 📖 Overview
+- Spotify OAuth login (hosted multi-user, session-cookie based)
+- Playlist import + track metadata extraction
+- Progressive Discogs matching with caching and safe fallbacks
+- Optional Discogs user token login (wishlist + library status)
+- Custom vendor links via `config/vendors.json`
+- Built-in rate limiting and structured JSON error responses
 
-VinylMatch follows a simple but powerful workflow:
+## How It Works
 
-1. **Load a Spotify playlist**  
-   You paste a Spotify playlist link, and VinylMatch fetches all track and album data via the Spotify Web API.
+1. Log in with Spotify
+2. Load a playlist
+3. For each track, compute a match candidate (Discogs master/release)
+4. Display results and vendor links in the web UI
 
-2. **Analyze track metadata**  
-   For each track, the app collects the track's metadata.
+## Matching Strategy (Discogs)
 
-3. **Find matching vinyl releases**  
-   Using the [Discogs API](https://www.discogs.com/developers), VinylMatch searches for likely matches.
-   
-4. **Display results**  
-   For each playlist track, you get:
-   - Original track metadata from Spotify  
-   - Link to the matching Discogs album/master page 
-   - Cover art preview
-   - Links to vinyl stores (HHV, JPC, Amazon, and custom vendors)
+The matching engine (`DiscogsService`) uses progressive passes:
 
----
+- Free-text search (artist + album)
+- Light/strict normalization to reduce noise (punctuation, formatting, etc.)
+- Structured search (master/release + optional year/track hints)
+- Fallback to a Discogs web search URL if API matching is unavailable or inconclusive
 
-## 🔍 Matching Procedure
-
-The matching engine (see `DiscogsService`) uses **progressive search passes**:
-
-- **Pass A – Direct text search:**  
-  Strictly normalized artist name + album title.
-
-- **Pass B – Light normalization:**  
-  Removal of diacritics, marketing suffixes, and formatting noise.
-
-- **Pass C – Structured queries:**  
-  Using Discogs search parameters (`type=master` or `type=release`) with year filters.
-
-- **Pass D – Fallbacks:**  
-  Searches without year, then finally provides a Discogs web search link if nothing exact is found.
-
-This approach ensures high hit rates even with messy or incomplete metadata.
-
----
-
-## 💻 Running Locally
+## Run Locally
 
 ### Requirements
-- **Java 21 or higher**
-- **Maven 3.8+**
-- **Spotify API Credentials** (Client ID & Client Secret)
-- *(Optional)* Discogs API Token — needed for automatic matching, otherwise only web search links will be provided.
 
-### Steps
+- Java 21+
+- Maven 3.8+ (or use the bundled Maven in `./.tools/maven/...` on Windows)
+- Spotify API credentials (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`)
+- Optional: Discogs token (`DISCOGS_TOKEN`) for API matching; without it, the app falls back to Discogs web search links
 
-1. **Clone the repository**
+### Setup
+
+1) Clone
+
 ```bash
 git clone https://github.com/Loues000/VinylMatch.git
 cd VinylMatch
 ```
 
-2. **Configure environment variables**
+2) Configure environment
 
-Copy the example environment file and fill in your credentials:
 ```bash
 cp config/env.example .env
-# Edit .env with your actual values
 ```
 
-Or set environment variables directly:
+3) Build and test
+
 ```bash
-# Required
-export SPOTIFY_CLIENT_ID=your_client_id
-export SPOTIFY_CLIENT_SECRET=your_client_secret
-
-# Recommended (for Discogs matching)
-export DISCOGS_TOKEN=your_discogs_token
-export DISCOGS_USER_AGENT="VinylMatch/1.0 (+your_contact_info)"
+mvn test
+mvn package
 ```
 
-> **Note:** Never commit `.env` files with real credentials. The `config/env.example` file contains safe placeholder values.
+The frontend is served as static files from `src/main/frontend/`.
 
-**Windows (PowerShell) quickstart**
+Windows (PowerShell, with bundled Maven):
+
+```powershell
+.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd test
+.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd package
+```
+
+4) Run
+
+```bash
+java -jar target/VinylMatch.jar
+```
+
+Open `http://localhost:8888/`.
+
+### Windows scripts
+
 ```powershell
 .\scripts\setup.ps1
 .\scripts\run.ps1 -Build
 ```
 
-3. **Build the project**
-```bash
-mvn package
-```
+## Hosted Deployment
 
-4. **Run the server**
-```bash
-java -jar target/VinylMatch.jar
-```
+VinylMatch is designed to run as a hosted multi-user app:
 
-The app will start a local web server at **http://localhost:8888/**
+- Users authenticate via Spotify OAuth
+- Sessions are stored in memory and identified by secure HTTP cookies
+- If you run behind a reverse proxy, forward `X-Forwarded-Proto` so secure cookies work correctly
 
----
+### Configuration (Environment Variables)
 
-## 🌐 Hosted Deployment
-
-VinylMatch supports multi-user hosted deployment with session-based authentication.
-
-### Configuration
-
-All configuration is done via environment variables. See [`config/env.example`](config/env.example) for a complete template.
-
-### Environment Variables
+See `config/env.example` for a complete template.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `SPOTIFY_CLIENT_ID` | Yes | Spotify OAuth client ID |
 | `SPOTIFY_CLIENT_SECRET` | Yes | Spotify OAuth client secret |
 | `SPOTIFY_REDIRECT_URI` | No | OAuth callback URL (defaults to `http://127.0.0.1:PORT/api/auth/callback`) |
-| `PUBLIC_BASE_URL` | Recommended | Your public URL (e.g., `https://vinylmatch.example.com`) |
-| `DISCOGS_TOKEN` | Recommended | Discogs personal access token for API matching |
+| `PUBLIC_BASE_URL` | Recommended | Public base URL (e.g. `https://vinylmatch.example.com`) |
+| `DISCOGS_TOKEN` | Optional | Default Discogs token used for API matching |
 | `DISCOGS_USER_AGENT` | Recommended | User-Agent for Discogs API (required by Discogs TOS) |
-| `PORT` | No | Server port (default: `8888`) |
-| `CORS_ALLOWED_ORIGINS` | No | Comma-separated list of allowed CORS origins |
+| `PORT` | No | Server port (default `8888`) |
+| `CORS_ALLOWED_ORIGINS` | No | Comma-separated allowed origins |
+| `RATE_LIMIT_PER_MINUTE` | No | Requests/minute per client+path (default `240`) |
+| `RATE_LIMIT_BURST` | No | Burst capacity (default `max(30, perMinute/4)`) |
 
 ### Spotify Developer Setup
 
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create a new application
-3. Add your redirect URI to the app settings:
-   - For local: `http://127.0.0.1:8888/api/auth/callback`
-   - For hosted: `https://your-domain.com/api/auth/callback`
-4. Copy the Client ID and Client Secret
+1. Create an app in the Spotify Developer Dashboard
+2. Add the redirect URI:
+   - Local: `http://127.0.0.1:8888/api/auth/callback`
+   - Local (IPv6): `http://[::1]:8888/api/auth/callback`
+   - Hosted: `https://your-domain.com/api/auth/callback`
+3. Set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`
 
-### Docker Deployment
+Note: Spotify does not allow `localhost` as a redirect URI. Use `127.0.0.1` (or `[::1]`) and open the app via that same host.
+
+### Docker
 
 ```bash
-# Build
 docker build -t vinylmatch .
-
-# Run
 docker run -d \
   --name vinylmatch \
   -p 8888:8888 \
   -e SPOTIFY_CLIENT_ID=your_client_id \
   -e SPOTIFY_CLIENT_SECRET=your_client_secret \
-  -e SPOTIFY_REDIRECT_URI=https://your-domain.com/api/auth/callback \
   -e PUBLIC_BASE_URL=https://your-domain.com \
   -e DISCOGS_TOKEN=your_discogs_token \
   -e DISCOGS_USER_AGENT="VinylMatch/1.0 (+your_email)" \
@@ -155,7 +136,7 @@ docker run -d \
   vinylmatch
 ```
 
-### Docker Compose Example
+### Docker Compose (example)
 
 ```yaml
 version: '3.8'
@@ -167,23 +148,19 @@ services:
     environment:
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
       - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
-      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
       - DISCOGS_TOKEN=${DISCOGS_TOKEN}
       - DISCOGS_USER_AGENT=VinylMatch/1.0
     volumes:
       - vinylmatch-cache:/app/cache
     restart: unless-stopped
-
 volumes:
   vinylmatch-cache:
 ```
 
----
+## Custom Vendor Links
 
-## 🛒 Custom Vinyl Store Links
-
-You can add custom vinyl store search links by creating `config/vendors.json`:
+Create `config/vendors.json` to add/override vendor links:
 
 ```json
 {
@@ -201,65 +178,43 @@ You can add custom vinyl store search links by creating `config/vendors.json`:
 
 See `config/vendors.json.example` for more examples.
 
----
+## API
 
-## 🌐 API Endpoints
-
-VinylMatch exposes REST endpoints for programmatic access:
+The server exposes REST endpoints under `/api/*`.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/playlist?id={playlist_id}` | GET | Returns playlist details + matched Discogs URLs |
-| `/api/user/playlists` | GET | Returns current user's playlists |
-| `/api/discogs/search` | POST | Search Discogs directly by artist/album/year/track |
-| `/api/discogs/batch` | POST | Batch search for multiple tracks |
 | `/api/auth/status` | GET | Check Spotify login state |
 | `/api/auth/login` | POST | Start Spotify OAuth flow |
 | `/api/auth/callback` | GET | OAuth callback handler |
 | `/api/auth/logout` | POST | End session |
+| `/api/playlist?id={playlist_id}` | GET | Playlist details + Discogs matches |
+| `/api/user/playlists` | GET | Current user's playlists |
+| `/api/discogs/search` | POST | Search Discogs by artist/album/year/track |
+| `/api/discogs/batch` | POST | Batch search for multiple tracks |
+| `/api/discogs/status` | GET | Discogs session status |
+| `/api/discogs/login` | POST | Discogs token login (per user) |
+| `/api/discogs/logout` | POST | Discogs logout |
+| `/api/discogs/wishlist` | GET | Discogs wishlist (requires Discogs login) |
+| `/api/discogs/wishlist/add` | POST | Add release to wantlist |
+| `/api/discogs/library-status` | POST | Wishlist/collection flags for URLs |
+| `/api/discogs/curation/candidates` | POST | Candidate matches (admin/curation) |
+| `/api/discogs/curation/save` | POST | Save curated match |
+| `/api/config/vendors` | GET | Vendor config for frontend |
 
----
+## Project Structure (high level)
 
-## 📂 Project Structure
+- `src/main/java/Server/` — HTTP server, routes, sessions, rate limiting
+- `src/main/java/com/hctamlyniv/discogs/` — Discogs client, cache, normalization, models
+- `src/main/java/com/hctamlyniv/DiscogsService.java` — Discogs matching facade
+- `src/main/frontend/` — static frontend (HTML/CSS/JS)
 
-```
-VinylMatch/
-├── src/main/java/
-│   ├── com/hctamlyniv/          # Core logic
-│   │   ├── Config.java          # Configuration management
-│   │   ├── DiscogsService.java  # Discogs API client + matching
-│   │   ├── Main.java            # Application entry point
-│   │   ├── ReceivingData.java   # Playlist data coordinator
-│   │   ├── SpotifyAuth.java     # Legacy OAuth (for CLI)
-│   │   └── spotify/             # Spotify API components
-│   └── Server/
-│       ├── ApiServer.java       # HTTP server + route wiring
-│       ├── auth/                # OAuth service
-│       ├── cache/               # Playlist caching
-│       ├── http/                # HTTP utilities
-│       ├── routes/              # API route handlers
-│       └── session/             # Session management
-├── src/main/frontend/           # Static web frontend
-│   ├── dist/                    # JavaScript modules
-│   ├── styles/                  # CSS
-│   └── *.html                   # HTML pages
-├── cache/                       # Runtime caches (gitignored)
-├── config/                      # Custom configuration
-├── Dockerfile                   # Docker build
-└── pom.xml                      # Maven build config
-```
+## Notes
 
----
+- No Discogs token: matching falls back to Discogs web search URLs.
+- Sessions are stored in memory; restarting the server logs users out.
+- The app only uses metadata; it does not download or store any audio.
 
-## 📝 Notes
+## License
 
-- Without a Discogs token, matching will fall back to providing Discogs search URLs.
-- Spotify barcode data is not always available — when missing, matching relies on fuzzy string search.
-- The app does not download or store music; it only works with metadata.
-- Sessions are stored in-memory; restarting the server will require users to re-login.
-
----
-
-## 📜 License
-
-See [License.txt](License.txt) for details.
+See `License.txt`.

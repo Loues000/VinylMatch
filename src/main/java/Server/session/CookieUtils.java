@@ -51,7 +51,8 @@ public final class CookieUtils {
         if (httpOnly) {
             cookie.append("; HttpOnly");
         }
-        cookie.append("; SameSite=Strict");
+        // OAuth callback is a cross-site top-level navigation back to this app; SameSite=Strict breaks session cookies.
+        cookie.append("; SameSite=Lax");
         if (HttpUtils.isSecureRequest(exchange)) {
             cookie.append("; Secure");
         }

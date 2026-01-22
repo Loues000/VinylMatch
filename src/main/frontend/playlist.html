@@ -3,12 +3,18 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VINYL MATCH — Playlist</title>
+    <title>VinylMatch — Playlist</title>
 
-    <!-- Header Styles laden -->
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem("vinylmatch_theme");
+          if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+        } catch (_) {}
+      })();
+    </script>
+
     <link rel="stylesheet" href="/common/header.css">
-
-    <!-- Restliche Playlist-Seite Styles -->
     <link rel="stylesheet" href="/styles/playlist.css">
 </head>
 <body>
@@ -16,8 +22,10 @@
 
 <div id="global-loading" class="loading-overlay hidden" role="alert" aria-live="assertive">
     <div class="spinner" aria-hidden="true"></div>
-    <p id="global-loading-text">Playlist wird geladen …</p>
+    <p id="global-loading-text">Loading playlist…</p>
 </div>
+
+<div class="sidebar-backdrop hidden" id="discogs-backdrop"></div>
 
 <div class="playlist-page">
     <div class="playlist-layout">
@@ -25,72 +33,73 @@
             <div id="playlist-header"></div>
 
             <div class="playlist-toolbar">
-                <div id="view-toggle" class="view-toggle" role="group" aria-label="Darstellung wechseln">
-                    <button type="button" class="view-toggle-btn" data-mode="list">Liste</button>
-                    <button type="button" class="view-toggle-btn" data-mode="grid">Kacheln</button>
+                <button type="button"
+                        class="sidebar-toggle"
+                        id="discogs-toggle"
+                        aria-controls="discogs-sidebar"
+                        aria-expanded="false">
+                    Discogs
+                </button>
+                <div id="view-toggle" class="view-toggle" role="group" aria-label="View mode">
+                    <button type="button" class="view-toggle-btn" data-mode="list">List</button>
+                    <button type="button" class="view-toggle-btn" data-mode="grid">Grid</button>
                 </div>
             </div>
 
-            <div id="playlist" class="playlist-tracks">Loading...</div>
+            <div id="playlist" class="playlist-tracks">Loading…</div>
 
             <div class="load-more-wrapper hidden" id="load-more-wrapper">
-                <button type="button" class="btn load-more" id="load-more">Weitere Titel laden</button>
+                <button type="button" class="btn load-more" id="load-more">Load more</button>
             </div>
         </main>
 
-        <aside class="playlist-sidebar" aria-label="Discogs &amp; Wishlist">
-            <div class="discogs-card">
-                <div class="discogs-card__header">
-                    <div>
-                        <p class="eyebrow">Discogs</p>
-                        <h2 id="discogs-heading">Wunschliste &amp; Sammlung</h2>
-                        <p class="muted">Login und Wunschliste jetzt direkt in der Seitenleiste.</p>
-                    </div>
-                    <div class="discogs-chip" id="discogs-status">Nicht verbunden</div>
+        <aside class="playlist-sidebar" id="discogs-sidebar" aria-label="Discogs">
+            <div class="discogs-card__header">
+                <div>
+                    <p class="eyebrow">Discogs</p>
+                    <h2 id="discogs-heading">Wishlist &amp; Collection</h2>
+                    <p class="muted">Sign in to show wishlist and library status.</p>
                 </div>
+                <div class="discogs-chip" id="discogs-status">Not connected</div>
+            </div>
 
-                <div class="discogs-tabs" role="tablist" aria-label="Discogs Steuerung">
-                    <button type="button" class="discogs-tab" aria-selected="true" data-target="discogs-login">Login</button>
-                    <button type="button" class="discogs-tab" aria-selected="false" data-target="discogs-dashboard">Wishlist</button>
-                </div>
-
-                <div class="discogs-sidebar-panels">
-                    <div class="discogs-login" id="discogs-login" role="tabpanel">
-                        <div class="discogs-login__intro">
-                            <p class="eyebrow">Login-Fenster</p>
-                            <p class="muted">Discogs-Popup öffnen und anmelden. Alternativ kannst du deinen User-Token nutzen.</p>
-                            <button type="button" class="btn ghost" id="discogs-popup">Discogs Login öffnen</button>
-                        </div>
-                        <div class="discogs-token">
-                            <label for="discogs-token">Discogs User-Token</label>
-                            <div class="discogs-login__row">
-                                <input id="discogs-token" type="password" placeholder="z. B. DjYtMa..." autocomplete="off" />
-                                <button type="button" class="btn" id="discogs-connect">Verbinden</button>
-                            </div>
-                            <p class="hint">Token bleibt nur in dieser Sitzung gespeichert.</p>
-                        </div>
+            <div class="discogs-sidebar-panels">
+                <div class="discogs-login" id="discogs-login">
+                    <div class="discogs-login__intro">
+                        <p class="eyebrow">Login</p>
+                        <p class="muted">Use a Discogs user token to enable wishlist and library status.</p>
+                        <button type="button" class="btn ghost" id="discogs-popup">Open Discogs (help)</button>
                     </div>
 
-                    <div class="discogs-dashboard hidden" id="discogs-dashboard" role="tabpanel" aria-label="Discogs Wunschliste">
-                        <div class="discogs-summary">
-                            <div>
-                                <p class="eyebrow">Verbunden als</p>
-                                <h3 id="discogs-user"></h3>
-                            </div>
-                            <div class="discogs-actions">
-                                <button type="button" class="btn ghost" id="discogs-refresh">Aktualisieren</button>
-                                <button type="button" class="btn danger" id="discogs-disconnect">Trennen</button>
-                            </div>
+                    <div class="discogs-token">
+                        <label for="discogs-token">Discogs user token</label>
+                        <div class="discogs-login__row">
+                            <input id="discogs-token" type="password" placeholder="e.g. DjYtMa..." autocomplete="off" />
+                            <button type="button" class="btn" id="discogs-connect">Connect</button>
                         </div>
+                        <p class="hint">The token is stored only for this session.</p>
+                    </div>
+                </div>
 
-                        <div class="discogs-wishlist">
-                            <div class="discogs-wishlist__header">
-                                <h4>Wishlist Covers</h4>
-                                <p class="muted" id="discogs-wishlist-count"></p>
-                            </div>
-                            <div class="discogs-wishlist__grid" id="discogs-wishlist-grid"></div>
-                            <p class="muted" id="discogs-wishlist-empty">Noch keine Wunschliste geladen.</p>
+                <div class="discogs-dashboard hidden" id="discogs-dashboard" aria-label="Discogs wishlist">
+                    <div class="discogs-summary">
+                        <div>
+                            <p class="eyebrow">Connected as</p>
+                            <h3 id="discogs-user"></h3>
                         </div>
+                        <div class="discogs-actions">
+                            <button type="button" class="btn ghost" id="discogs-refresh">Refresh</button>
+                            <button type="button" class="btn danger" id="discogs-disconnect">Disconnect</button>
+                        </div>
+                    </div>
+
+                    <div class="discogs-wishlist">
+                        <div class="discogs-wishlist__header">
+                            <h4>Wishlist</h4>
+                            <p class="muted" id="discogs-wishlist-count"></p>
+                        </div>
+                        <div class="discogs-wishlist__grid" id="discogs-wishlist-grid"></div>
+                        <p class="muted" id="discogs-wishlist-empty">No wishlist loaded yet.</p>
                     </div>
                 </div>
             </div>

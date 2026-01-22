@@ -6,6 +6,8 @@ import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.SpotifyHttpManager;
 import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.security.SecureRandom;
@@ -18,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SpotifyOAuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(SpotifyOAuthService.class);
     private static final String[] SCOPES = {"playlist-read-private", "playlist-read-collaborative"};
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     
@@ -27,18 +30,55 @@ public class SpotifyOAuthService {
     private final String clientId;
     private final String clientSecret;
     private final URI redirectUri;
+    private final boolean redirectUriExplicit;
     private final SpotifyApi spotifyApi;
 
     public SpotifyOAuthService() {
         this.clientId = trimOrNull(Config.getSpotifyClientId());
         this.clientSecret = trimOrNull(Config.getSpotifyClientSecret());
-        this.redirectUri = buildRedirectUri();
+        RedirectUriResolution resolution = resolveRedirectUriFromConfig();
+        this.redirectUri = resolution.redirectUri();
+        this.redirectUriExplicit = resolution.explicit();
+
+        if (redirectUri != null && isLoopbackUri(redirectUri) && "https".equalsIgnoreCase(redirectUri.getScheme())) {
+            log.warn("Spotify redirect URI uses https with a loopback host ({}). For local development, prefer http://127.0.0.1:PORT/api/auth/callback unless you are terminating TLS.", redirectUri);
+        }
         
         if (clientId != null && clientSecret != null) {
             this.spotifyApi = new SpotifyApi.Builder()
                     .setClientId(clientId)
                     .setClientSecret(clientSecret)
                     .setRedirectUri(redirectUri)
+                    .build();
+        } else {
+            this.spotifyApi = null;
+        }
+    }
+
+    /**
+     * Test-friendly constructor to avoid relying on process environment variables.
+     */
+    public SpotifyOAuthService(String clientId, String clientSecret, URI redirectUri) {
+        this.clientId = trimOrNull(clientId);
+        this.clientSecret = trimOrNull(clientSecret);
+        if (redirectUri != null) {
+            this.redirectUri = redirectUri;
+            this.redirectUriExplicit = true;
+        } else {
+            RedirectUriResolution resolution = resolveRedirectUriFromConfig();
+            this.redirectUri = resolution.redirectUri();
+            this.redirectUriExplicit = resolution.explicit();
+        }
+
+        if (this.redirectUri != null && isLoopbackUri(this.redirectUri) && "https".equalsIgnoreCase(this.redirectUri.getScheme())) {
+            log.warn("Spotify redirect URI uses https with a loopback host ({}). For local development, prefer http://127.0.0.1:PORT/api/auth/callback unless you are terminating TLS.", this.redirectUri);
+        }
+
+        if (this.clientId != null && this.clientSecret != null) {
+            this.spotifyApi = new SpotifyApi.Builder()
+                    .setClientId(this.clientId)
+                    .setClientSecret(this.clientSecret)
+                    .setRedirectUri(this.redirectUri)
                     .build();
         } else {
             this.spotifyApi = null;
@@ -53,12 +93,20 @@ public class SpotifyOAuthService {
      * Generates an authorization URL with CSRF state token.
      * 
      * @param sessionId The session ID to associate with this authorization attempt
+     * @param redirectUriOverride Optional override for the redirect URI (used for local dev host consistency)
      * @return The authorization URL to redirect the user to
      */
-    public String buildAuthorizationUrl(String sessionId) {
+    public String buildAuthorizationUrl(String sessionId, URI redirectUriOverride) {
         if (!isConfigured()) {
             throw new IllegalStateException("Spotify credentials not configured");
         }
+
+        URI effectiveRedirectUri = redirectUri;
+        if (!redirectUriExplicit && redirectUriOverride != null) {
+            effectiveRedirectUri = redirectUriOverride;
+        }
+        log.info("Using redirect URI: {}", effectiveRedirectUri);
+        SpotifyApi api = apiForRedirectUri(effectiveRedirectUri);
 
         // Generate a secure random state token for CSRF protection
         byte[] stateBytes = new byte[24];
@@ -66,13 +114,13 @@ public class SpotifyOAuthService {
         String state = Base64.getUrlEncoder().withoutPadding().encodeToString(stateBytes);
 
         // Store pending authorization
-        pendingAuthorizations.put(state, new PendingAuth(sessionId, System.currentTimeMillis()));
+        pendingAuthorizations.put(state, new PendingAuth(sessionId, System.currentTimeMillis(), effectiveRedirectUri));
         
         // Clean up old pending authorizations (older than 10 minutes)
         long cutoff = System.currentTimeMillis() - (10 * 60 * 1000);
         pendingAuthorizations.entrySet().removeIf(entry -> entry.getValue().createdAt() < cutoff);
 
-        AuthorizationCodeUriRequest uriRequest = spotifyApi.authorizationCodeUri()
+        AuthorizationCodeUriRequest uriRequest = api.authorizationCodeUri()
                 .scope(String.join(" ", SCOPES))
                 .state(state)
                 .build();
@@ -96,18 +144,19 @@ public class SpotifyOAuthService {
         // Validate state token
         PendingAuth pending = pendingAuthorizations.remove(state);
         if (pending == null) {
-            System.err.println("[OAuth] Invalid or expired state token");
+            log.warn("Invalid or expired OAuth state token");
             return false;
         }
 
         // Verify session ID matches
         if (!pending.sessionId().equals(session.getSessionId())) {
-            System.err.println("[OAuth] Session ID mismatch");
+            log.warn("OAuth session id mismatch");
             return false;
         }
 
         try {
-            AuthorizationCodeCredentials credentials = spotifyApi.authorizationCode(code).build().execute();
+            SpotifyApi api = apiForRedirectUri(pending.redirectUri());
+            AuthorizationCodeCredentials credentials = api.authorizationCode(code).build().execute();
 
             session.setAccessToken(credentials.getAccessToken());
             session.setRefreshToken(credentials.getRefreshToken());
@@ -116,10 +165,10 @@ public class SpotifyOAuthService {
             long expiresInMs = Math.max(0, (credentials.getExpiresIn() - 30)) * 1000L;
             session.setTokenExpiresAt(System.currentTimeMillis() + expiresInMs);
 
-            System.out.println("[OAuth] Tokens obtained successfully");
+            log.info("Spotify OAuth tokens obtained successfully");
             return true;
         } catch (Exception e) {
-            System.err.println("[OAuth] Token exchange failed: " + e.getMessage());
+            log.warn("Spotify OAuth token exchange failed", e);
             return false;
         }
     }
@@ -162,7 +211,7 @@ public class SpotifyOAuthService {
 
             return true;
         } catch (Exception e) {
-            System.err.println("[OAuth] Token refresh failed: " + e.getMessage());
+            log.warn("Spotify OAuth token refresh failed", e);
             return false;
         }
     }
@@ -187,11 +236,26 @@ public class SpotifyOAuthService {
         return redirectUri;
     }
 
-    private static URI buildRedirectUri() {
+    public boolean isRedirectUriExplicit() {
+        return redirectUriExplicit;
+    }
+
+    private SpotifyApi apiForRedirectUri(URI effectiveRedirectUri) {
+        if (spotifyApi != null && effectiveRedirectUri != null && effectiveRedirectUri.equals(redirectUri)) {
+            return spotifyApi;
+        }
+        return new SpotifyApi.Builder()
+                .setClientId(clientId)
+                .setClientSecret(clientSecret)
+                .setRedirectUri(effectiveRedirectUri != null ? effectiveRedirectUri : redirectUri)
+                .build();
+    }
+
+    private static RedirectUriResolution resolveRedirectUriFromConfig() {
         // Check for explicit redirect URI from config/env
         String configuredUri = Config.getSpotifyRedirectUri();
         if (configuredUri != null && !configuredUri.isBlank()) {
-            return SpotifyHttpManager.makeUri(configuredUri.trim());
+            return new RedirectUriResolution(SpotifyHttpManager.makeUri(configuredUri.trim()), true);
         }
 
         // Check for public base URL
@@ -201,17 +265,27 @@ public class SpotifyOAuthService {
             if (!base.endsWith("/")) {
                 base += "/";
             }
-            return SpotifyHttpManager.makeUri(base + "api/auth/callback");
+            return new RedirectUriResolution(SpotifyHttpManager.makeUri(base + "api/auth/callback"), true);
         }
 
-        // Default to localhost
+        // Default to 127.0.0.1 (localhost may not be recognized as secure in some browsers)
         int port = Config.getPort();
-        return SpotifyHttpManager.makeUri("http://127.0.0.1:" + port + "/api/auth/callback");
+        return new RedirectUriResolution(SpotifyHttpManager.makeUri("http://127.0.0.1:" + port + "/api/auth/callback"), false);
+    }
+
+    private static boolean isLoopbackUri(URI uri) {
+        if (uri == null) return false;
+        String host = uri.getHost();
+        if (host == null) return false;
+        String lowerHost = host.toLowerCase();
+        return lowerHost.equals("localhost") || lowerHost.equals("127.0.0.1") || lowerHost.equals("::1");
     }
 
     private static String trimOrNull(String s) {
         return (s == null) ? null : s.trim();
     }
 
-    private record PendingAuth(String sessionId, long createdAt) {}
+    private record PendingAuth(String sessionId, long createdAt, URI redirectUri) {}
+
+    private record RedirectUriResolution(URI redirectUri, boolean explicit) {}
 }

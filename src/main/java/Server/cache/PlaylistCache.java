@@ -2,6 +2,8 @@ package Server.cache;
 
 import Server.PlaylistData;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class PlaylistCache {
 
+    private static final Logger log = LoggerFactory.getLogger(PlaylistCache.class);
     private static final Duration CACHE_TTL = Duration.ofMinutes(5);
     private static final Path CACHE_DIR = Paths.get("cache", "playlists");
     private static final HexFormat HEX_FORMAT = HexFormat.of();
@@ -37,7 +40,7 @@ public class PlaylistCache {
         try {
             Files.createDirectories(CACHE_DIR);
         } catch (IOException e) {
-            System.err.println("[CACHE] Konnte Cache-Verzeichnis nicht erstellen: " + e.getMessage());
+            log.warn("Failed to create cache directory: {}", e.getMessage());
         }
     }
 
@@ -119,7 +122,7 @@ public class PlaylistCache {
             }
             return new PlaylistCacheEntry(snapshot.playlistData(), snapshot.expiresAtMillis());
         } catch (IOException e) {
-            System.err.println("[CACHE] Konnte Snapshot nicht laden: " + e.getMessage());
+            log.warn("Failed to read cache snapshot: {}", e.getMessage());
             return null;
         }
     }
@@ -131,7 +134,7 @@ public class PlaylistCache {
             byte[] bytes = mapper.writeValueAsBytes(snapshot);
             Files.write(snapshotPath(key), bytes);
         } catch (IOException e) {
-            System.err.println("[CACHE] Konnte Snapshot nicht speichern: " + e.getMessage());
+            log.warn("Failed to write cache snapshot: {}", e.getMessage());
         }
     }
 
@@ -139,7 +142,7 @@ public class PlaylistCache {
         try {
             Files.deleteIfExists(snapshotPath(key));
         } catch (IOException e) {
-            System.err.println("[CACHE] Konnte Snapshot nicht löschen: " + e.getMessage());
+            log.warn("Failed to delete cache snapshot: {}", e.getMessage());
         }
     }
 
@@ -156,7 +159,7 @@ public class PlaylistCache {
                 });
             }
         } catch (IOException e) {
-            System.err.println("[CACHE] Konnte Cache-Verzeichnis nicht bereinigen: " + e.getMessage());
+            log.warn("Failed to purge cache directory: {}", e.getMessage());
         }
     }
 

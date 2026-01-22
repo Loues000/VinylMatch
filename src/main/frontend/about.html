@@ -3,7 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VINYL MATCH — About</title>
+  <title>VinylMatch — About</title>
+
+  <script>
+    (() => {
+      try {
+        const theme = localStorage.getItem("vinylmatch_theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch (_) {}
+    })();
+  </script>
+
   <link rel="stylesheet" href="/common/header.css">
   <link rel="stylesheet" href="/styles/about.css">
 </head>
@@ -13,44 +23,36 @@
 <main class="about-page">
   <section class="about-hero">
     <h1>About VinylMatch</h1>
-    <p class="tagline">Bridging your digital playlists with the world of physical records</p>
+    <p class="tagline">Connect digital playlists with physical releases</p>
   </section>
 
   <article class="about-content">
     <h2>What is VinylMatch?</h2>
     <p>
-      VinylMatch pairs Spotify tracks with Discogs releases, making it easy for collectors, DJs, 
-      and vinyl enthusiasts to discover the perfect pressing for their favourite songs. Simply paste 
-      a Spotify playlist link and let VinylMatch find matching vinyl releases automatically.
+      VinylMatch pairs Spotify tracks with Discogs releases, making it easier to find the right pressing for a playlist.
+      Paste a Spotify playlist link and VinylMatch generates Discogs links and vendor search links per track.
     </p>
 
     <h2>Key Features</h2>
     <ul>
-      <li><strong>Spotify Integration</strong> — OAuth login with automatic token refresh keeps you connected.</li>
-      <li><strong>Smart Matching</strong> — Progressive Discogs search that prefers barcode matches when available.</li>
-      <li><strong>Shop Links</strong> — Quick shortcuts to HHV, JPC, Amazon and custom vinyl shops for every matched release.</li>
-      <li><strong>Playlist Memory</strong> — Recent playlist history so you can jump back into your latest searches.</li>
-      <li><strong>Curation Tools</strong> — Manual matching for edge cases where automatic matching falls short.</li>
+      <li><strong>Spotify integration</strong> — OAuth login with session cookies.</li>
+      <li><strong>Smart matching</strong> — Progressive Discogs search with safe fallbacks.</li>
+      <li><strong>Vendor links</strong> — HHV, JPC, Amazon and custom vendors via configuration.</li>
+      <li><strong>Recent playlists</strong> — Quickly jump back to your last searches.</li>
+      <li><strong>Curation tools</strong> — Manual matching for edge cases.</li>
     </ul>
 
     <h2>Technology</h2>
     <div class="tech-stack">
-      <span class="tech-badge">Java 21</span>
+      <span class="tech-badge">Java</span>
       <span class="tech-badge">Spotify Web API</span>
-      <span class="tech-badge">Discogs API</span>
-      <span class="tech-badge">Vanilla JavaScript</span>
-      <span class="tech-badge">Docker</span>
+      <span class="tech-badge">Discogs</span>
+      <span class="tech-badge">Vanilla JS</span>
     </div>
-
-    <h2>Support & Feedback</h2>
-    <p>
-      Have ideas to improve VinylMatch? Found a bug? Open an issue on 
-      <a href="https://github.com/Loues000/VinylMatch" target="_blank" rel="noopener noreferrer">GitHub</a> 
-      or reach out via the contact information in the project README.
-    </p>
   </article>
 </main>
 
 <script type="module" src="/dist/main.js"></script>
 </body>
 </html>
+

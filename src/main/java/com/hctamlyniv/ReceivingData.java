@@ -2,7 +2,6 @@ package com.hctamlyniv;
 
 import Server.PlaylistData;
 import Server.TrackData;
-import com.hctamlyniv.spotify.BarcodeExtractor;
 import com.hctamlyniv.spotify.PlaylistAssembler;
 import com.hctamlyniv.spotify.SpotifyAlbumBatchLoader;
 import com.hctamlyniv.spotify.SpotifyPlaylistReader;
@@ -13,13 +12,16 @@ import se.michaelthelin.spotify.model_objects.specification.PlaylistTrack;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Coordinator class for loading Spotify playlist data.
  * Delegates to specialized components for different concerns.
  */
 public class ReceivingData {
+
+    private static final Logger log = LoggerFactory.getLogger(ReceivingData.class);
 
     private final SpotifyApi spotifyApi;
     private final String playlistId;
@@ -40,7 +42,7 @@ public class ReceivingData {
         // Initialize specialized components
         this.playlistReader = new SpotifyPlaylistReader(spotifyApi);
         this.albumBatchLoader = new SpotifyAlbumBatchLoader(spotifyApi);
-        this.playlistAssembler = new PlaylistAssembler(discogsService);
+        this.playlistAssembler = new PlaylistAssembler(this.discogsService);
     }
 
     /**
@@ -86,8 +88,7 @@ public class ReceivingData {
             );
 
         } catch (Exception e) {
-            System.err.println("Fehler beim Laden der Playlist: " + e.getMessage());
-            e.printStackTrace();
+            log.warn("Failed to load playlist data: {}", e.getMessage(), e);
             return null;
         }
     }
