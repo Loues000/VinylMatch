@@ -32,6 +32,7 @@ let state = {
     id: null,
     pageSize: DEFAULT_PAGE_SIZE,
     aggregated: null,
+    prefetchedChunk: null,
     viewMode: getStoredViewMode(),
     albums: null,
     selectedAlbums: null,
@@ -284,15 +285,89 @@ function setupCurationPanel() {
 }
 
 // API functions
-async function fetchPlaylistChunk(id, offset, limit, { reset } = { reset: false }) {
-    const query = new URLSearchParams({ id, offset: String(Math.max(0, offset)), limit: String(Math.max(1, limit)) });
-    const response = await fetch(`/api/playlist?${query.toString()}`, { cache: "no-cache" });
-    
+function chunkQuery(id, offset, limit) {
+    return new URLSearchParams({
+        id,
+        offset: String(Math.max(0, offset)),
+        limit: String(Math.max(1, limit)),
+    });
+}
+async function requestPlaylistChunk(id, offset, limit) {
+    const response = await fetch(`/api/playlist?${chunkQuery(id, offset, limit).toString()}`, { cache: "no-cache" });
     if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
     }
-    
-    const payload = await response.json();
+    return response.json();
+}
+async function consumePrefetchedChunk(id, offset, limit) {
+    const prefetched = state.prefetchedChunk;
+    if (!prefetched) {
+        return null;
+    }
+    if (prefetched.id !== id || prefetched.offset !== offset || prefetched.limit !== limit) {
+        return null;
+    }
+    if (prefetched.promise) {
+        try {
+            await prefetched.promise;
+        }
+        catch (_a) {
+        }
+    }
+    if (state.prefetchedChunk !== prefetched) {
+        return null;
+    }
+    const payload = prefetched.payload ?? null;
+    state.prefetchedChunk = null;
+    return payload;
+}
+function prefetchNextChunk() {
+    if (!state.id || !state.aggregated?.hasMore) {
+        state.prefetchedChunk = null;
+        return;
+    }
+    const offset = typeof state.aggregated.nextOffset === "number"
+        ? state.aggregated.nextOffset
+        : state.aggregated.tracks?.length ?? 0;
+    const limit = Math.max(1, state.pageSize || DEFAULT_PAGE_SIZE);
+    const existing = state.prefetchedChunk;
+    if (existing
+        && existing.id === state.id
+        && existing.offset === offset
+        && existing.limit === limit
+        && (existing.promise || existing.payload)) {
+        return;
+    }
+    const next = {
+        id: state.id,
+        offset,
+        limit,
+        payload: null,
+        promise: null,
+    };
+    state.prefetchedChunk = next;
+    next.promise = requestPlaylistChunk(state.id, offset, limit)
+        .then((payload) => {
+        if (state.prefetchedChunk !== next) {
+            return null;
+        }
+        next.payload = payload;
+        return payload;
+    })
+        .catch(() => {
+        if (state.prefetchedChunk === next) {
+            state.prefetchedChunk = null;
+        }
+        return null;
+    })
+        .finally(() => {
+        if (state.prefetchedChunk === next) {
+            next.promise = null;
+        }
+    });
+}
+async function fetchPlaylistChunk(id, offset, limit, { reset } = { reset: false }, prefetchedPayload = null) {
+    const payload = prefetchedPayload ?? await requestPlaylistChunk(id, offset, limit);
     const previous = state.aggregated;
     const merged = storePlaylistChunk(id, payload, previous);
     const prevLength = previous?.tracks?.length ?? 0;
@@ -318,8 +393,14 @@ async function fetchPlaylistChunk(id, offset, limit, { reset } = { reset: false 
     
     // Only start Discogs lookups if album selection is complete
     if (loadedTracks.length && (state.albumSelectionComplete || !reset)) {
-        await queueDiscogsLookups(loadedOffset, loadedTracks, state, (delay) => scheduleLibraryRefresh(delay, state));
+        const lookupTask = queueDiscogsLookups(loadedOffset, loadedTracks, state, (delay) => scheduleLibraryRefresh(delay, state));
+        if (lookupTask && typeof lookupTask.catch === "function") {
+            lookupTask.catch((error) => {
+                console.warn("Discogs lookups failed:", error);
+            });
+        }
     }
+    return payload;
 }
 
 // Album extraction from tracks
@@ -405,6 +486,7 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
         id: id || null,
         pageSize,
         aggregated: null,
+        prefetchedChunk: null,
         viewMode: state.viewMode || getStoredViewMode(),
         albums: null,
         selectedAlbums: null,
@@ -459,8 +541,14 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
             
             // Start Discogs lookup for filtered tracks
             if (filteredTracks.length > 0) {
-                await queueDiscogsLookups(0, filteredTracks, state, (delay) => scheduleLibraryRefresh(delay, state));
+                const lookupTask = queueDiscogsLookups(0, filteredTracks, state, (delay) => scheduleLibraryRefresh(delay, state));
+                if (lookupTask && typeof lookupTask.catch === "function") {
+                    lookupTask.catch((error) => {
+                        console.warn("Discogs lookups failed:", error);
+                    });
+                }
             }
+            prefetchNextChunk();
             setPlaylistStatus(`Loaded ${filteredTracks.length} tracks.`, "success");
         }
     } catch (e) {
@@ -489,7 +577,9 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
             btn.setAttribute("aria-busy", "true");
             
             try {
-                await fetchPlaylistChunk(state.id, offset, state.pageSize, { reset: false });
+                const prefetched = await consumePrefetchedChunk(state.id, offset, state.pageSize);
+                await fetchPlaylistChunk(state.id, offset, state.pageSize, { reset: false }, prefetched);
+                prefetchNextChunk();
                 setPlaylistStatus("");
             } catch (e) {
                 setPlaylistStatus("More tracks could not be loaded: " + (e instanceof Error ? e.message : String(e)), "error");

@@ -122,6 +122,7 @@ public class DiscogsRoutes {
             DiscogsService discogs = resolveDiscogsService(exchange);
 
             List<Map<String, Object>> results = new ArrayList<>();
+            Map<String, Optional<String>> requestLookupCache = new HashMap<>();
             for (Object entry : tracksList) {
                 if (!(entry instanceof Map<?, ?> track)) {
                     continue;
@@ -145,11 +146,22 @@ public class DiscogsRoutes {
                     continue;
                 }
 
-                Optional<String> cached = discogs.peekCachedUri(artist, album, year, barcode);
-                Optional<String> urlOpt = discogs.findAlbumUri(artist, album, year, trackTitle, barcode);
-                boolean cacheHit = cached.isPresent()
-                        && urlOpt.isPresent()
-                        && cached.get().equals(urlOpt.get());
+                String lookupKey = buildBatchLookupKey(artist, album, year, barcode);
+                Optional<String> urlOpt;
+                boolean cacheHit;
+                if (lookupKey != null && requestLookupCache.containsKey(lookupKey)) {
+                    urlOpt = requestLookupCache.get(lookupKey);
+                    cacheHit = true;
+                } else {
+                    Optional<String> cached = discogs.peekCachedUri(artist, album, year, barcode);
+                    urlOpt = discogs.findAlbumUri(artist, album, year, trackTitle, barcode);
+                    cacheHit = cached.isPresent()
+                            && urlOpt.isPresent()
+                            && cached.get().equals(urlOpt.get());
+                    if (lookupKey != null) {
+                        requestLookupCache.put(lookupKey, urlOpt);
+                    }
+                }
 
                 resultEntry.put("cacheHit", cacheHit);
                 resultEntry.put("url", urlOpt.orElse(null));
@@ -298,7 +310,7 @@ public class DiscogsRoutes {
             URI redirectOverride = oauthService.isRedirectUriExplicit() ? null : deriveLoopbackDiscogsCallback(exchange);
             Optional<String> authorizeUrl = oauthService.buildAuthorizationUrl(redirectOverride);
             if (authorizeUrl.isEmpty()) {
-                HttpUtils.sendApiError(exchange, 500, "discogs_oauth_start_failed", "Failed to start Discogs OAuth");
+                HttpUtils.sendApiError(exchange, 502, "discogs_oauth_start_failed", "Discogs OAuth temporarily unavailable. Retry in a few seconds.");
                 return;
             }
             HttpUtils.sendJson(exchange, 200, Map.of("authorizeUrl", authorizeUrl.get()));
@@ -783,5 +795,22 @@ public class DiscogsRoutes {
             }
         }
         return null;
+    }
+
+    private static String buildBatchLookupKey(String artist, String album, Integer year, String barcode) {
+        if (artist == null || album == null) {
+            return null;
+        }
+        String normalizedArtist = normalizeLookupPart(artist);
+        String normalizedAlbum = normalizeLookupPart(album);
+        if (normalizedArtist.isBlank() || normalizedAlbum.isBlank()) {
+            return null;
+        }
+        String yearPart = (year != null) ? String.valueOf(year) : "";
+        return normalizedArtist + "|" + normalizedAlbum + "|" + yearPart + "|" + normalizeLookupPart(barcode);
+    }
+
+    private static String normalizeLookupPart(String value) {
+        return (value == null) ? "" : value.trim().toLowerCase();
     }
 }
