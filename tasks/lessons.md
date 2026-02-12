@@ -9,6 +9,7 @@
 - When JaCoCo gates block verification, run explicit test/build commands with documented flags and record why.
 
 ## 2026-02-12
+- For paginated third-party lists, never drop entries during normalization just because optional link metadata is missing; preserve the row and derive a fallback link from stable IDs when possible, or pagination totals become misleading and pages appear "empty".
 - For homepage route variants like `/1|/2|/3`, normalize trailing slashes server-side before file resolution to avoid hidden 404 edge cases.
 - If legacy encoding characters make patch context unstable, rewrite the file in one pass and then re-run focused diff checks to verify no behavior was dropped.
 - During UI redesigns, run a targeted guideline pass (forms, image sizing, motion/accessibility hooks) before finalizing to avoid avoidable compliance regressions.
@@ -24,7 +25,12 @@
 - For optional action icons, render icons only when both light/dark assets exist and keep a visible text fallback for incomplete vendor setups.
 - For token-based third-party features (like Discogs wishlist), persist the user token locally (opt-in), auto-restore the server session on page load, and provide in-page status messages so users can recover without guessing.
 - For popup-based OAuth flows, always close the loop with both `postMessage` callback signaling and a status-poll fallback so auth completion is detected even if popup messaging is blocked.
+- For OAuth callback HTML pages, escape all dynamic query/error text before rendering to avoid reflected script injection in popup status views.
 - Keep JaCoCo thresholds explicit and realistic for the active baseline; otherwise all tests can pass while CI/build still fails on `jacoco:check`.
 - For paged side panels, keep pagination state and controls in the same module as data fetching; otherwise UI arrows disappear when layout-only refactors happen.
 - For idempotent add actions backed by third-party APIs (like Discogs wantlist), treat duplicate responses as success and reserve frontend-visible errors for true failures to avoid noisy 409 UX.
 - Keep static fallback markup asset paths aligned with actual files (especially icons loaded before JS hydration), or users will see persistent 404 console errors even when dynamic rendering later corrects the UI.
+- For paginated third-party panels, treat a sudden `total=0` + empty page on `page>1` as suspicious if prior total was non-zero; auto-fallback one page instead of resetting UI to an unusable empty `1/1` state.
+- For OAuth request-token starts against third-party APIs, treat `429`/`5xx` and IO errors as transient with short retry/backoff; otherwise users see avoidable intermittent 500s on repeated connect attempts.
+- During bulk selector cleanup, avoid global text replacement of `:root ` without block scoping; it can leave orphaned `{` blocks and break CSS syntax.
+- For slow third-party enrichment flows (like Discogs matching), never `await` the full queue in primary UI actions (`load`, `load more`); render content first and run lookups in the background to keep interactions responsive.

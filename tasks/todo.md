@@ -1,5 +1,51 @@
 # VinylMatch Improvement Plan (Execution Order)
 
+## 2026-02-13 Next Session: Card Ownership Indicators
+
+### Goal
+Show clear badges directly on track cards when a release is already in the Discogs wishlist or already owned in the Discogs collection.
+
+### Implementation Checklist
+- [ ] Add compact card badges for `In wantlist` and `In collection` states.
+- [ ] Ensure badges update live after login, refresh, and successful wantlist-add actions.
+- [ ] Keep badge visuals consistent in light and dark themes.
+- [ ] Verify behavior in list and grid view modes.
+
+## 2026-02-12 Discogs API Docs Notes (Agent Reference)
+
+### Goal
+Capture Discogs API details relevant to VinylMatch (auth, endpoints, query params, pagination, rate limiting, error semantics) in a single Markdown reference file for future agentic work.
+
+### Implementation Checklist
+- [x] Gather Discogs API documentation details (auth headers, endpoints, params, pagination).
+- [x] Cross-check notes against current code usage (search, wantlist, collection, OAuth).
+- [x] Write `tasks/discogs-api-notes.md` with project-focused guidance + examples.
+
+## 2026-02-12 Discogs Wishlist Pagination Stability Fix
+
+### Goal
+Prevent false empty wishlist pages (`page > 1`) caused by dropped Discogs entries or transient empty responses, and keep pager navigation usable.
+
+### Implementation Checklist
+- [x] Keep wishlist entries even when Discogs does not provide a direct `uri/resource_url`.
+- [x] Build a fallback release URL from `basic_information.id` when possible.
+- [x] Avoid recursive page fallback loops in frontend wishlist preview refresh.
+- [x] Preserve/render previous page data on suspicious empty resets and keep pager controls usable.
+- [x] Add a regression test for wishlist entries with missing URI metadata.
+- [x] Run targeted verification (`mvn "-Dtest=DiscogsApiClientTest" "-Djacoco.skip=true" test` and JS syntax check).
+
+## 2026-02-12 Playlist Prefetch + Discogs Throughput Pass
+
+### Goal
+Prefetch one hidden playlist page in the background for instant `Load more` and speed up Discogs matching without introducing aggressive API pressure.
+
+### Implementation Checklist
+- [x] Add one-page-ahead playlist chunk prefetch state and fetch helpers.
+- [x] Consume prefetched chunk on `Load more` before falling back to direct fetch.
+- [x] Trigger next prefetch after each successful reveal while keeping hidden tracks unrendered.
+- [x] Improve Discogs queue throughput (dedupe duplicate album lookups + lower idle delay).
+- [x] Run focused frontend syntax checks and summarize proof.
+
 ## Goal
 Improve product quality and developer experience with a Docker-optional workflow, while keeping changes small and verifiable.
 
@@ -343,3 +389,53 @@ Remove remaining browser-console noise by fixing stale Spotify icon path referen
 - [x] Replace stale `/design/spotify_white.svg` reference in shared header markup with an existing asset path.
 - [x] Treat `/api/discogs/wishlist/add` `409` responses as "already in wantlist" in the playlist action handler.
 - [x] Run focused frontend syntax/file checks and summarize required reload steps.
+
+---
+
+# 2026-02-12 Wishlist Pagination Empty-State Regression
+
+## Goal
+Prevent the wishlist pager from getting stuck on an empty state (e.g. page 3 shows no entries and no usable back path) when higher-page responses unexpectedly reset to empty totals.
+
+## Implementation Checklist
+- [x] Add guard logic in `refreshWishlistPreview()` for unexpected `total=0` empty responses on pages > 1.
+- [x] Auto-fallback to previous page and keep pager usable instead of rendering a locked empty `1/1` state.
+- [x] Run focused JS syntax checks and summarize runtime verification steps.
+
+---
+
+# 2026-02-12 Discogs OAuth Start Intermittent 500
+
+## Goal
+Stabilize `/api/discogs/oauth/start` by handling transient Discogs request-token failures with retry/backoff and exposing clearer error messages to the UI.
+
+## Implementation Checklist
+- [x] Add transient retry/backoff in `DiscogsOAuthService.buildAuthorizationUrl()` for request-token failures (`429`/`5xx`/IO).
+- [x] Improve OAuth start route response semantics/message for upstream failures.
+- [x] Parse backend error payload in frontend OAuth-start handler for actionable user feedback.
+- [x] Run focused compile/syntax checks and summarize verification.
+
+---
+
+# 2026-02-12 Spotify OAuth Callback Window Restyle
+
+## Goal
+Restyle the `/api/auth/callback` popup page so the Spotify login redirect window matches the current VinylMatch visual language.
+
+## Implementation Checklist
+- [x] Update callback HTML/CSS in `AuthRoutes.sendCallbackHtml` to use VinylMatch-like flat card styling and status states.
+- [x] Keep popup behavior intact (`postMessage` to opener) while improving success/failed UX text and CTA behavior.
+- [x] Add HTML escaping for callback messages before rendering.
+- [x] Run compile verification and summarize proof.
+
+---
+
+# 2026-02-12 Home Variant 4 Selector Cleanup
+
+## Goal
+Reduce maintenance noise in `home.css` by removing repetitive `:root[data-home-variant="4"]` prefixes now that Variant 4 is the primary home design.
+
+## Implementation Checklist
+- [x] Convert Variant 4 section selectors to default home selectors while preserving dark-mode overrides.
+- [x] Keep legacy Variant 3 selectors untouched.
+- [x] Verify served `home.css` no longer contains Variant 4 root-prefix selectors.
