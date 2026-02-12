@@ -56,7 +56,7 @@ jobs:
         target: /opt/vinylmatch
 
     - name: Restart staging service
-      uses: appleboy/ssh-action@v1.0.3
+      uses: appleboy/ssh-action@v1.2.5
       with:
         host: ${{ secrets.STAGING_SSH_HOST }}
         username: ${{ secrets.STAGING_SSH_USER }}
@@ -89,7 +89,7 @@ jobs:
         target: /opt/vinylmatch
 
     - name: Restart production service
-      uses: appleboy/ssh-action@v1.0.3
+      uses: appleboy/ssh-action@v1.2.5
       with:
         host: ${{ secrets.PRODUCTION_SSH_HOST }}
         username: ${{ secrets.PRODUCTION_SSH_USER }}
