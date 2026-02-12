@@ -11,6 +11,7 @@
         const theme = localStorage.getItem("vinylmatch_theme");
         if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
       } catch (_) {}
+      document.documentElement.dataset.aboutVariant = "4";
     })();
   </script>
 
@@ -55,4 +56,3 @@
 <script type="module" src="/dist/main.js"></script>
 </body>
 </html>
-

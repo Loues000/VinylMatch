@@ -20,6 +20,25 @@ function hideGlobalLoading() {
     overlay.classList.remove("visible");
     overlay.classList.add("hidden");
 }
+function showHomeStatus(message, tone = "neutral") {
+    const node = document.getElementById("home-status");
+    if (!node)
+        return;
+    if (!message) {
+        node.textContent = "";
+        node.classList.add("hidden");
+        node.classList.remove("error", "success");
+        return;
+    }
+    node.textContent = message;
+    node.classList.remove("hidden", "error", "success");
+    if (tone === "error") {
+        node.classList.add("error");
+    }
+    else if (tone === "success") {
+        node.classList.add("success");
+    }
+}
 function createPlaylistCard(item) {
     const card = document.createElement("a");
     card.className = "recent-item";
@@ -28,6 +47,10 @@ function createPlaylistCard(item) {
     const img = document.createElement("img");
     img.src = item.coverUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
     img.alt = item.name || "Playlist";
+    img.width = 44;
+    img.height = 44;
+    img.loading = "lazy";
+    img.decoding = "async";
     const info = document.createElement("div");
     info.className = "title";
     info.textContent = item.name || "Spotify Playlist";
@@ -148,16 +171,53 @@ function toggleTab(targetId) {
         }
     });
 }
+function bindSidebarTabKeyboard(tabs) {
+    tabs.forEach((tab, index) => {
+        tab.addEventListener("keydown", (event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+                return;
+            }
+            event.preventDefault();
+            if (!tabs.length) {
+                return;
+            }
+            let nextIndex = index;
+            if (event.key === "ArrowRight") {
+                nextIndex = (index + 1) % tabs.length;
+            }
+            else if (event.key === "ArrowLeft") {
+                nextIndex = (index - 1 + tabs.length) % tabs.length;
+            }
+            else if (event.key === "Home") {
+                nextIndex = 0;
+            }
+            else if (event.key === "End") {
+                nextIndex = tabs.length - 1;
+            }
+            tabs[nextIndex].focus();
+            tabs[nextIndex].click();
+        });
+    });
+}
 window.addEventListener("DOMContentLoaded", () => {
+    const isHomePage = !!document.getElementById("home-page");
+    const isPlaylistPage = !!document.getElementById("playlist");
     injectHeader();
-    const path = location.pathname.toLowerCase();
-    if (path === "/" || path.endsWith("/home.html")) {
+    if (isHomePage) {
         renderRecents();
         renderPopular();
         const pageContainer = document.getElementById("home-page");
         const sidebarToggle = document.getElementById("sidebar-toggle");
         const sidebar = document.getElementById("home-sidebar");
         const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+        const getFocusableInSidebar = () => {
+            if (!sidebar) {
+                return [];
+            }
+            const nodes = sidebar.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+            return Array.from(nodes).filter((node) => node instanceof HTMLElement && !node.classList.contains("hidden"));
+        };
+        let sidebarLastFocus = null;
         const setSidebarOpen = (open) => {
             if (pageContainer) {
                 pageContainer.classList.toggle("sidebar-open", open);
@@ -168,9 +228,22 @@ window.addEventListener("DOMContentLoaded", () => {
             }
             if (sidebar) {
                 sidebar.dataset.open = open ? "true" : "false";
+                sidebar.setAttribute("aria-hidden", String(!open));
+                if ("inert" in sidebar) {
+                    sidebar.inert = !open;
+                }
             }
             if (sidebarBackdrop) {
                 sidebarBackdrop.classList.toggle("hidden", !open);
+            }
+            if (open) {
+                sidebarLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                const focusable = getFocusableInSidebar();
+                focusable[0]?.focus();
+            }
+            else if (sidebarLastFocus) {
+                sidebarLastFocus.focus();
+                sidebarLastFocus = null;
             }
         };
         sidebarToggle?.addEventListener("click", () => {
@@ -181,6 +254,25 @@ window.addEventListener("DOMContentLoaded", () => {
         window.addEventListener("keydown", (event) => {
             if (event.key === "Escape") {
                 setSidebarOpen(false);
+                return;
+            }
+            if (event.key !== "Tab" || !pageContainer?.classList.contains("sidebar-open")) {
+                return;
+            }
+            const focusable = getFocusableInSidebar();
+            if (!focusable.length) {
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            const active = document.activeElement;
+            if (event.shiftKey && active === first) {
+                event.preventDefault();
+                last.focus();
+            }
+            else if (!event.shiftKey && active === last) {
+                event.preventDefault();
+                first.focus();
             }
         });
         setSidebarOpen(false);
@@ -461,6 +553,12 @@ window.addEventListener("DOMContentLoaded", () => {
         window.addEventListener("vm:auth-state", (event) => {
             handleAuthChange(!!event?.detail?.loggedIn);
         });
+        window.addEventListener("vm:auth-error", (event) => {
+            const message = event?.detail?.message;
+            if (typeof message === "string" && message.trim()) {
+                showHomeStatus(message, "error");
+            }
+        });
         if (recentTab) {
             recentTab.addEventListener("click", (event) => {
                 event.preventDefault();
@@ -486,6 +584,8 @@ window.addEventListener("DOMContentLoaded", () => {
                 loadInitialUserPlaylists();
             });
         }
+        const enabledTabs = [recentTab, popularTab, userTab].filter((tab) => tab instanceof HTMLButtonElement && !tab.disabled);
+        bindSidebarTabKeyboard(enabledTabs);
         toggleTab("recent-panel");
         const btn = document.getElementById("use-link");
         const ta = document.getElementById("playlist-url");
@@ -524,20 +624,27 @@ window.addEventListener("DOMContentLoaded", () => {
             btn.disabled = submitting || !id;
         };
         if (ta) {
-            ta.addEventListener("input", refreshButtonState);
+            ta.addEventListener("input", () => {
+                ta.setAttribute("aria-invalid", "false");
+                showHomeStatus("");
+                refreshButtonState();
+            });
             refreshButtonState();
         }
         if (btn && ta) {
-            btn.addEventListener("click", async () => {
+            const submitPlaylistInput = async () => {
                 if (submitting)
                     return;
                 const url = ta.value.trim();
                 const id = getPlaylistIdFromUrl(url);
                 if (!id) {
-                    alert("Please paste a valid Spotify playlist link first.");
+                    showHomeStatus("Please paste a valid Spotify playlist link first.", "error");
+                    ta.setAttribute("aria-invalid", "true");
+                    ta.focus();
                     refreshButtonState();
                     return;
                 }
+                ta.setAttribute("aria-invalid", "false");
                 const apiUrl = `/api/playlist?id=${encodeURIComponent(id)}&limit=${PLAYLIST_PAGE_SIZE}`;
                 const pageUrl = `/playlist.html?id=${encodeURIComponent(id)}`;
                 console.info("Starting playlist load", { playlistId: id });
@@ -553,6 +660,8 @@ window.addEventListener("DOMContentLoaded", () => {
                     gen.classList.add("visible");
                 submitting = true;
                 refreshButtonState();
+                btn.setAttribute("aria-busy", "true");
+                showHomeStatus("Loading playlist…");
                 showGlobalLoading("Loading playlist…");
                 let response;
                 try {
@@ -564,24 +673,34 @@ window.addEventListener("DOMContentLoaded", () => {
                     const cached = readCachedPlaylist(id);
                     storePlaylistChunk(id, payload, cached?.data);
                     renderRecents();
+                    showHomeStatus("Playlist loaded. Redirecting…", "success");
                     location.href = pageUrl;
                 }
                 catch (e) {
                     hideGlobalLoading();
                     console.error("Playlist could not be loaded", e);
                     const msg = response?.status === 401
-                        ? "Please log in with Spotify first."
+                        ? "This playlist is private. Log in with Spotify to open it."
                         : "Playlist could not be loaded. Please try again later.";
-                    alert(msg);
+                    showHomeStatus(msg, "error");
                 }
                 finally {
                     submitting = false;
+                    btn.removeAttribute("aria-busy");
                     refreshButtonState();
                 }
+            };
+            ta.addEventListener("keydown", (event) => {
+                if (event.key !== "Enter") {
+                    return;
+                }
+                event.preventDefault();
+                submitPlaylistInput();
             });
+            btn.addEventListener("click", submitPlaylistInput);
         }
     }
-    else if (path.endsWith("/playlist.html")) {
+    else if (isPlaylistPage) {
         const urlParams = new URLSearchParams(location.search);
         const id = urlParams.get("id");
         if (!id) {
@@ -613,8 +732,8 @@ async function loadPlaylistAndNavigate(id, options = {}) {
         hideGlobalLoading();
         let msg = e instanceof Error ? e.message : String(e);
         if (response?.status === 401) {
-            msg = "Please log in with Spotify first.";
+            msg = "This playlist is private. Log in with Spotify to open it.";
         }
-        alert("Playlist could not be opened: " + msg);
+        showHomeStatus("Playlist could not be opened: " + msg, "error");
     }
 }

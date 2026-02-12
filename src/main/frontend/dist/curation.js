@@ -107,7 +107,7 @@ function renderCurationAlbum(container, item, placeholderImage) {
     if (empty)
         empty.classList.add("hidden");
     if (!item) {
-        resetCurationUi(container, "No playlist tracks loaded.");
+        resetCurationUi(container, "No playlist.");
         return;
     }
     const img = document.createElement("img");
@@ -175,7 +175,7 @@ function createCandidateCard(container, item, candidate, onCandidateSaved) {
     else {
         const placeholder = document.createElement("div");
         placeholder.className = "placeholder";
-        placeholder.textContent = "Kein Vorschaubild";
+        placeholder.textContent = "No preview";
         preview.appendChild(placeholder);
     }
     const meta = document.createElement("div");
@@ -225,7 +225,7 @@ function renderCurationCandidates(container, item, candidates, onCandidateSaved)
     grid.textContent = "";
     if (!Array.isArray(candidates) || !candidates.length) {
         if (empty) {
-            empty.textContent = "No candidates found. Try the next album.";
+            empty.textContent = "No candidates.";
             empty.classList.remove("hidden");
         }
         return;
@@ -246,7 +246,7 @@ async function loadCurationCandidates(container, item) {
     curationState.loading = true;
     const empty = select(container, "#curation-empty");
     if (empty) {
-        empty.textContent = "Loading Discogs candidates…";
+        empty.textContent = "Loading candidates...";
         empty.classList.remove("hidden");
     }
     try {
@@ -312,7 +312,7 @@ async function loadCurationCandidates(container, item) {
     }
     catch (e) {
         console.warn("Failed to load curation candidates", e);
-        resetCurationUi(container, "Failed to load candidates.");
+        resetCurationUi(container, "Candidate load failed.");
         return [];
     }
     finally {
@@ -359,7 +359,7 @@ async function selectCandidate(container, item, candidate, button, onCandidateSa
 
 async function showCurationItem(container, step, placeholderImage, onCandidateSaved) {
     if (!curationState.queue.length) {
-        resetCurationUi(container, "No playlist loaded.");
+        resetCurationUi(container, "No playlist.");
         updateCurationProgress(container);
         return;
     }
@@ -379,7 +379,7 @@ async function initCurationPanel(options = {}) {
     if (templatePath) {
         await injectTemplate(container, templatePath);
     }
-    resetCurationUi(container, "No playlist loaded yet.");
+    resetCurationUi(container, "Idle.");
     updateCurationProgress(container);
     const placeholderImage = options.placeholderImage ?? "";
     const buildQueue = typeof options.buildQueue === "function" ? options.buildQueue : () => [];
@@ -391,7 +391,7 @@ async function initCurationPanel(options = {}) {
         curationState.queue = buildQueue();
         curationState.index = 0;
         if (!curationState.queue.length) {
-            resetCurationUi(container, "No playlist tracks found.");
+            resetCurationUi(container, "No tracks.");
             updateCurationProgress(container);
             return;
         }
@@ -448,13 +448,13 @@ function updateSummary() {
     if (!title || !details)
         return;
     if (!pageState.aggregated) {
-        title.textContent = "Nothing loaded yet";
-        details.textContent = "Paste a playlist link above to start curation.";
+        title.textContent = "No playlist";
+        details.textContent = "-";
         return;
     }
     title.textContent = pageState.aggregated.playlistName || "Playlist";
     const trackCount = Array.isArray(pageState.aggregated.tracks) ? pageState.aggregated.tracks.length : 0;
-    details.textContent = `${trackCount} tracks loaded • only incomplete albums in the queue`;
+    details.textContent = `${trackCount} tracks`;
 }
 
 async function fetchPlaylist(id) {
@@ -505,7 +505,7 @@ async function loadPlaylistFromInput() {
     const textarea = document.getElementById("curation-playlist-url");
     const id = textarea ? getPlaylistIdFromUrl(textarea.value.trim()) : null;
     if (!id) {
-        alert("Please paste a valid Spotify playlist URL.");
+        alert("Invalid playlist URL.");
         return;
     }
     console.info("Starting playlist load", { playlistId: id });
@@ -519,7 +519,7 @@ async function loadPlaylistFromInput() {
     }
     catch (e) {
         console.error("Playlist could not be loaded", e);
-        alert("Playlist could not be loaded. Please try again later.");
+        alert("Playlist load failed.");
     }
     finally {
         hideLoading();
@@ -529,6 +529,23 @@ async function loadPlaylistFromInput() {
 
 async function initCurationPage() {
     await injectHeader();
+    
+    const statusRes = await fetch("/api/auth/status", { cache: "no-cache", credentials: "include" });
+    if (statusRes.ok) {
+        const status = await statusRes.json();
+        if (!status?.loggedIn) {
+            showCurationError("Login required.");
+            return;
+        }
+        if (status?.isAdmin !== true) {
+            showCurationError("Admin only.");
+            return;
+        }
+    } else {
+        showCurationError("Auth check failed.");
+        return;
+    }
+    
     updateSummary();
     pageState.curation = await initCurationPanel({
         placeholderImage: PLACEHOLDER_IMG,
@@ -545,6 +562,28 @@ async function initCurationPage() {
     }
     const btn = document.getElementById("curation-use-link");
     btn?.addEventListener("click", () => loadPlaylistFromInput());
+    const input = document.getElementById("curation-playlist-url");
+    input?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") {
+            return;
+        }
+        event.preventDefault();
+        loadPlaylistFromInput();
+    });
+}
+
+function showCurationError(message) {
+    const page = document.getElementById("curation-page");
+    if (page) {
+        page.innerHTML = `
+            <section class="curation-hero">
+                <div>
+                    <h1>Access Denied</h1>
+                    <p class="muted">${message}</p>
+                </div>
+            </section>
+        `;
+    }
 }
 
 export { initCurationPanel };
@@ -554,3 +593,4 @@ window.addEventListener("DOMContentLoaded", () => {
         initCurationPage().catch((error) => console.warn("Curation page could not be initialized", error));
     }
 });
+

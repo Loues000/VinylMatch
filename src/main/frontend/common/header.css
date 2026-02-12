@@ -52,7 +52,7 @@
     font-weight: 650;
 }
 
-.navigation a {
+.navigation a:not(.spotify-btn) {
     color: var(--text-secondary, rgba(49, 47, 44, 0.82));
     text-decoration: none;
     padding: 8px 10px;
@@ -61,12 +61,12 @@
     transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.navigation a:hover {
+.navigation a:not(.spotify-btn):hover {
     background: var(--accent-soft, rgba(49, 47, 44, 0.08));
     color: var(--text-primary, #312F2C);
 }
 
-.navigation a.active {
+.navigation a:not(.spotify-btn).active {
     color: var(--text-primary, #312F2C);
     border-color: var(--border-default, rgba(49, 47, 44, 0.16));
 }
@@ -111,8 +111,17 @@
     white-space: nowrap;
 }
 
-.spotify-btn img {
+#header .navigation a.spotify-btn,
+#header .navigation a.spotify-btn:visited {
+    color: #ffffff;
+}
+
+.spotify-logo {
+    width: 18px;
     height: 18px;
+    display: block;
+    object-fit: contain;
+    flex-shrink: 0;
 }
 
 .spotify-btn:hover {
@@ -120,14 +129,29 @@
     box-shadow: 0 6px 20px rgba(29, 185, 84, 0.4);
 }
 
+#header .navigation a.spotify-btn:hover,
+#header .navigation a.spotify-btn:focus-visible {
+    color: #ffffff;
+}
+
 .spotify-btn.logged-in {
     background: linear-gradient(135deg, #404040 0%, #2d2d2d 100%);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
+#header .navigation a.spotify-btn.logged-in,
+#header .navigation a.spotify-btn.logged-in:visited {
+    color: #f5f5f5;
+}
+
 .spotify-btn.logged-in:hover {
     background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
     box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+}
+
+#header .navigation a.spotify-btn.logged-in:hover,
+#header .navigation a.spotify-btn.logged-in:focus-visible {
+    color: #ffffff;
 }
 
 @media (max-width: 820px) {

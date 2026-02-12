@@ -6,8 +6,8 @@
 import { primaryArtist, normalizeForSearch } from "../common/playlist-utils.js";
 import { buildTrackKey, getRegistryEntry } from "./track-registry.js";
 
-const DISCOGS_BATCH_SIZE = 5;
-const DISCOGS_BATCH_DELAY_MS = 175;
+const DISCOGS_BATCH_SIZE = 2;
+const DISCOGS_BATCH_DELAY_MS = 650;
 
 export const discogsState = {
     queue: [],
@@ -38,6 +38,10 @@ export function safeDiscogsUrl(url) {
 
 export function safeDiscogsImage(url) {
     return safeDiscogsUrl(url);
+}
+
+function isSearchFallbackUrl(url) {
+    return typeof url === "string" && url.toLowerCase().includes("/search");
 }
 
 export function applyDiscogsResult(result, state, scheduleLibraryRefresh) {
@@ -163,9 +167,14 @@ export function queueDiscogsLookups(startIndex, tracks, state, scheduleLibraryRe
             continue;
         }
         
-        if (track.discogsAlbumUrl) {
+        const existingUrl = typeof track.discogsAlbumUrl === "string"
+            ? safeDiscogsUrl(track.discogsAlbumUrl)
+            : null;
+        track.discogsAlbumUrl = existingUrl;
+
+        if (existingUrl && !isSearchFallbackUrl(existingUrl)) {
             discogsState.completed.add(key);
-            applyDiscogsResult({ key, index, url: track.discogsAlbumUrl }, state, scheduleLibraryRefresh);
+            applyDiscogsResult({ key, index, url: existingUrl }, state, scheduleLibraryRefresh);
             continue;
         }
         

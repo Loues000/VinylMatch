@@ -11,17 +11,17 @@ import { loadCustomVendors } from "./common/vendors.js";
 // Import modules
 import { buildTrackKey, clearTrackRegistry, getRegistryEntry } from "./playlist/track-registry.js";
 import { getStoredViewMode, applyViewMode, initViewToggle, DEFAULT_VIEW_MODE } from "./playlist/view-mode.js";
-import { 
-    discogsState, 
-    resetDiscogsState, 
-    queueDiscogsLookups, 
+import {
+    discogsState,
+    resetDiscogsState,
+    queueDiscogsLookups,
     markDiscogsResult,
-    safeDiscogsUrl 
+    safeDiscogsUrl
 } from "./playlist/discogs-state.js";
-import { 
+import {
     discogsUiState,
-    setupDiscogsPanel, 
-    scheduleLibraryRefresh 
+    setupDiscogsPanel,
+    scheduleLibraryRefresh
 } from "./playlist/discogs-ui.js";
 import { createTrackElement, PLACEHOLDER_IMG } from "./playlist/track-renderer.js";
 
@@ -33,6 +33,9 @@ let state = {
     pageSize: DEFAULT_PAGE_SIZE,
     aggregated: null,
     viewMode: getStoredViewMode(),
+    albums: null,
+    selectedAlbums: null,
+    albumSelectionComplete: false,
 };
 function setupDiscogsDrawer() {
     const page = document.querySelector(".playlist-page");
@@ -46,11 +49,29 @@ function setupDiscogsDrawer() {
         return;
     }
     toggle.dataset.bound = "true";
+    const getFocusableInSidebar = () => {
+        const nodes = sidebar.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+        return Array.from(nodes).filter((node) => node instanceof HTMLElement && !node.classList.contains("hidden"));
+    };
+    let sidebarLastFocus = null;
     const setOpen = (open) => {
         page.classList.toggle("sidebar-open", open);
         document.body.classList.toggle("drawer-open", !!open);
         toggle.setAttribute("aria-expanded", String(!!open));
         backdrop.classList.toggle("hidden", !open);
+        sidebar.setAttribute("aria-hidden", String(!open));
+        if ("inert" in sidebar) {
+            sidebar.inert = !open;
+        }
+        if (open) {
+            sidebarLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            getFocusableInSidebar()[0]?.focus();
+            setPlaylistStatus("Discogs panel opened.");
+        }
+        else {
+            sidebarLastFocus?.focus();
+            sidebarLastFocus = null;
+        }
     };
     toggle.addEventListener("click", () => {
         const isOpen = page.classList.contains("sidebar-open");
@@ -60,6 +81,25 @@ function setupDiscogsDrawer() {
     window.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
             setOpen(false);
+            return;
+        }
+        if (event.key !== "Tab" || !page.classList.contains("sidebar-open")) {
+            return;
+        }
+        const focusable = getFocusableInSidebar();
+        if (!focusable.length) {
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (event.shiftKey && active === first) {
+            event.preventDefault();
+            last.focus();
+        }
+        else if (!event.shiftKey && active === last) {
+            event.preventDefault();
+            first.focus();
         }
     });
     setOpen(false);
@@ -80,6 +120,39 @@ function hideOverlay() {
     if (!overlay) return;
     overlay.classList.remove("visible");
     overlay.classList.add("hidden");
+}
+function setPlaylistStatus(message, tone = "neutral") {
+    const node = document.getElementById("playlist-status");
+    if (!node)
+        return;
+    if (!message) {
+        node.textContent = "";
+        node.classList.add("hidden");
+        node.classList.remove("error", "success");
+        return;
+    }
+    node.textContent = message;
+    node.classList.remove("hidden", "error", "success");
+    if (tone === "error") {
+        node.classList.add("error");
+    }
+    else if (tone === "success") {
+        node.classList.add("success");
+    }
+}
+function registerPlaylistStatusEvents() {
+    if (window.__vmPlaylistStatusBound) {
+        return;
+    }
+    window.__vmPlaylistStatusBound = true;
+    window.addEventListener("vm:playlist-status", (event) => {
+        const message = event?.detail?.message;
+        const tone = event?.detail?.tone;
+        if (typeof message !== "string") {
+            return;
+        }
+        setPlaylistStatus(message, tone === "error" || tone === "success" ? tone : "neutral");
+    });
 }
 
 // Header rendering
@@ -225,7 +298,12 @@ async function fetchPlaylistChunk(id, offset, limit, { reset } = { reset: false 
     const prevLength = previous?.tracks?.length ?? 0;
     state.aggregated = merged;
     
-    if (reset) {
+    // Only render tracks if album selection is complete (for initial load with reset=true)
+    // or if it's a subsequent load (reset=false)
+    if (reset && !state.albumSelectionComplete) {
+        // Don't render yet - wait for album selection
+        renderHeader(merged);
+    } else if (reset) {
         renderHeader(merged);
         renderTracks(merged, { reset: true });
     } else {
@@ -238,9 +316,67 @@ async function fetchPlaylistChunk(id, offset, limit, { reset } = { reset: false 
     const loadedOffset = typeof payload?.offset === "number" ? payload.offset : offset;
     const loadedTracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
     
-    if (loadedTracks.length) {
+    // Only start Discogs lookups if album selection is complete
+    if (loadedTracks.length && (state.albumSelectionComplete || !reset)) {
         await queueDiscogsLookups(loadedOffset, loadedTracks, state, (delay) => scheduleLibraryRefresh(delay, state));
     }
+}
+
+// Album extraction from tracks
+async function extractAlbumsFromTracks(tracks) {
+    if (!tracks || tracks.length === 0) return [];
+    
+    try {
+        const response = await fetch("/api/albums/extract", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tracks }),
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        return data.albums || [];
+    } catch (error) {
+        console.warn("Album extraction failed:", error);
+        return [];
+    }
+}
+
+// Auto-select all albums without showing modal
+async function handleAlbumSelection(tracks) {
+    const albums = await extractAlbumsFromTracks(tracks);
+    
+    if (albums.length === 0) {
+        return [];
+    }
+    
+    state.albums = albums;
+    // Auto-select all albums
+    state.selectedAlbums = albums;
+    state.albumSelectionComplete = true;
+    
+    return albums;
+}
+
+// Get tracks for selected albums only
+function getTracksForSelectedAlbums() {
+    if (!state.selectedAlbums || !state.aggregated?.tracks) {
+        return state.aggregated?.tracks || [];
+    }
+    
+    // Create a set of all track indices that belong to selected albums
+    const selectedIndices = new Set();
+    state.selectedAlbums.forEach(album => {
+        if (album.trackIndices) {
+            album.trackIndices.forEach(idx => selectedIndices.add(idx));
+        }
+    });
+    
+    // Filter tracks
+    return state.aggregated.tracks.filter((_, index) => selectedIndices.has(index));
 }
 
 // Main load function
@@ -254,6 +390,7 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
     }
 
     setupDiscogsDrawer();
+    registerPlaylistStatusEvents();
     
     // Load custom vendor configuration (non-blocking)
     loadCustomVendors().catch(() => {});
@@ -264,12 +401,15 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
     await setupCurationPanel();
     applyViewMode(state.viewMode, state, renderTracks, { rerender: false });
     
-    state = {
+    Object.assign(state, {
         id: id || null,
         pageSize,
         aggregated: null,
         viewMode: state.viewMode || getStoredViewMode(),
-    };
+        albums: null,
+        selectedAlbums: null,
+        albumSelectionComplete: false,
+    });
     
     resetDiscogsState();
     
@@ -280,29 +420,53 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
     
     if (!state.id) {
         container.textContent = "No playlist ID provided and no cached playlist available.";
+        setPlaylistStatus("No playlist selected.", "error");
         return;
     }
     
-    showOverlay();
-    
-    if (cached && cached.id === state.id) {
-        state.aggregated = cached.data;
-        renderHeader(state.aggregated);
-        renderTracks(state.aggregated, { reset: true });
-        updateLoadMore(state.aggregated);
-        
-        if (Array.isArray(state.aggregated?.tracks) && state.aggregated.tracks.length) {
-            await queueDiscogsLookups(0, state.aggregated.tracks, state, (delay) => scheduleLibraryRefresh(delay, state));
-        }
-    } else {
-        container.textContent = "Loading...";
-    }
+    showOverlay("Loading playlist…");
     
     try {
+        // Load first chunk of playlist
         await fetchPlaylistChunk(state.id, 0, pageSize, { reset: true });
+        
+        if (state.aggregated?.tracks?.length > 0) {
+            hideOverlay();
+            
+            // Auto-select all albums
+            showOverlay("Analyzing albums…");
+            const selectedAlbums = await handleAlbumSelection(state.aggregated.tracks);
+            hideOverlay();
+            
+            if (selectedAlbums.length === 0) {
+                container.textContent = "No albums selected. Please select at least one album to continue.";
+                setPlaylistStatus("No albums selected.", "error");
+                return;
+            }
+            
+            // Now render only tracks from selected albums and start Discogs search
+            const filteredTracks = getTracksForSelectedAlbums();
+            
+            // Update the aggregated tracks for display
+            state.aggregated = {
+                ...state.aggregated,
+                tracks: filteredTracks,
+            };
+            
+            renderHeader(state.aggregated);
+            renderTracks(state.aggregated, { reset: true });
+            updateLoadMore(state.aggregated);
+            
+            // Start Discogs lookup for filtered tracks
+            if (filteredTracks.length > 0) {
+                await queueDiscogsLookups(0, filteredTracks, state, (delay) => scheduleLibraryRefresh(delay, state));
+            }
+            setPlaylistStatus(`Loaded ${filteredTracks.length} tracks.`, "success");
+        }
     } catch (e) {
         console.error("Failed to load playlist:", e);
         container.textContent = `Failed to load playlist: ${e instanceof Error ? e.message : String(e)}`;
+        setPlaylistStatus("Playlist could not be loaded.", "error");
     } finally {
         hideOverlay();
     }
@@ -322,13 +486,16 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
             btn.disabled = true;
             const originalText = btn.textContent || "Load more";
             btn.textContent = "Loading…";
+            btn.setAttribute("aria-busy", "true");
             
             try {
                 await fetchPlaylistChunk(state.id, offset, state.pageSize, { reset: false });
+                setPlaylistStatus("");
             } catch (e) {
-                alert("More tracks could not be loaded: " + (e instanceof Error ? e.message : String(e)));
+                setPlaylistStatus("More tracks could not be loaded: " + (e instanceof Error ? e.message : String(e)), "error");
             } finally {
                 btn.disabled = false;
+                btn.removeAttribute("aria-busy");
                 btn.textContent = originalText;
                 loadMoreInFlight = false;
             }

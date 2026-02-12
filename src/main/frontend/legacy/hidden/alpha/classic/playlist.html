@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VinylMatch â€” Playlist</title>
+    <title>VinylMatch — Playlist</title>
 
     <script>
       (() => {
@@ -11,21 +11,18 @@
           const theme = localStorage.getItem("vinylmatch_theme");
           if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
         } catch (_) {}
-        // Mark this as variant 4
-        document.documentElement.dataset.playlistVariant = "4";
       })();
     </script>
 
     <link rel="stylesheet" href="/common/header.css">
     <link rel="stylesheet" href="/styles/playlist.css">
-    <link rel="stylesheet" href="/styles/playlist-variant4.css">
 </head>
 <body>
 <div id="header"></div>
 
 <div id="global-loading" class="loading-overlay hidden" role="alert" aria-live="assertive">
     <div class="spinner" aria-hidden="true"></div>
-    <p id="global-loading-text">Loading playlistâ€¦</p>
+    <p id="global-loading-text">Loading playlist…</p>
 </div>
 
 <div class="sidebar-backdrop hidden" id="discogs-backdrop"></div>
@@ -48,9 +45,10 @@
                     <button type="button" class="view-toggle-btn" data-mode="grid">Grid</button>
                 </div>
             </div>
+
             <p id="playlist-status" class="status-message hidden" role="status" aria-live="polite"></p>
 
-            <div id="playlist" class="playlist-tracks">Loadingâ€¦</div>
+            <div id="playlist" class="playlist-tracks">Loading…</div>
 
             <div class="load-more-wrapper hidden" id="load-more-wrapper">
                 <button type="button" class="btn load-more" id="load-more">Load more</button>
@@ -72,7 +70,6 @@
                     <div class="discogs-login__intro">
                         <p class="eyebrow">Login</p>
                         <p class="muted">Use a Discogs user token to enable wishlist and library status.</p>
-                        <button type="button" class="btn" id="discogs-oauth-connect">Connect with Discogs</button>
                         <button type="button" class="btn ghost" id="discogs-popup">Open Discogs (help)</button>
                     </div>
 
@@ -82,7 +79,7 @@
                             <input id="discogs-token" type="password" placeholder="e.g. DjYtMa..." autocomplete="off" />
                             <button type="button" class="btn" id="discogs-connect">Connect</button>
                         </div>
-                        <p class="hint">The token is stored locally in this browser on this device.</p>
+                        <p class="hint">The token is stored only for this session.</p>
                     </div>
                 </div>
 

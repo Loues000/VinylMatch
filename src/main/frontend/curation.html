@@ -14,6 +14,10 @@
       })();
     </script>
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="/common/header.css">
     <link rel="stylesheet" href="/styles/curation.css">
 </head>
@@ -28,36 +32,30 @@
 <main class="curation-page" id="curation-page">
     <section class="curation-hero">
         <div>
-            <p class="eyebrow">Curation</p>
-            <h1>Manual matching</h1>
-            <p class="muted">Save curated Discogs links for edge cases.</p>
+            <h1>Curation Console</h1>
         </div>
-        <div class="hero-badge">Admin tool</div>
+        <div class="hero-badge">DEV ONLY</div>
     </section>
 
     <section class="curation-intro">
         <div class="intro-card">
             <div>
-                <p class="eyebrow">1. Select playlist</p>
-                <h2>Paste playlist URL</h2>
-                <p class="muted">Only unmatched albums are shown in the queue.</p>
+                <h2>Playlist</h2>
             </div>
             <div class="input-row">
                 <label class="sr-only" for="curation-playlist-url">Spotify playlist URL</label>
                 <textarea id="curation-playlist-url" placeholder="https://open.spotify.com/playlist/…"></textarea>
                 <div class="actions">
-                    <button class="btn" id="curation-use-link" type="button">Load playlist</button>
+                    <button class="btn" id="curation-use-link" type="button">Load</button>
                 </div>
             </div>
-            <p class="hint">Curated links are stored for the whole app.</p>
         </div>
     </section>
 
     <section class="curation-workspace">
         <aside class="playlist-summary" id="curation-summary">
-            <p class="eyebrow">Playlist</p>
-            <h3 id="curation-summary-title">Nothing loaded yet</h3>
-            <p class="muted" id="curation-summary-details">Paste a playlist URL to start curation.</p>
+            <h3 id="curation-summary-title">No playlist</h3>
+            <p class="muted" id="curation-summary-details">—</p>
         </aside>
 
         <div class="curation-panel-wrapper">
@@ -65,17 +63,15 @@
                 <div class="curation-card">
                     <div class="curation-card__header">
                         <div>
-                            <p class="eyebrow">Discogs</p>
-                            <h2 id="curation-heading">Save missing links</h2>
-                            <p class="muted">Pick the correct Discogs URL and save it as a curated match.</p>
+                            <h2 id="curation-heading">Save Matches</h2>
                         </div>
                         <div class="curation-progress" id="curation-progress">0 / 0</div>
                     </div>
 
                     <div class="curation-toolbar">
-                        <button type="button" class="btn" id="curation-start">Scan playlist</button>
+                        <button type="button" class="btn" id="curation-start">Scan</button>
                         <div class="curation-nav">
-                            <button type="button" class="btn ghost" id="curation-prev" aria-label="Previous album">Back</button>
+                            <button type="button" class="btn ghost" id="curation-prev" aria-label="Previous album">Prev</button>
                             <button type="button" class="btn ghost" id="curation-next" aria-label="Next album">Next</button>
                         </div>
                     </div>
@@ -83,7 +79,7 @@
                     <div class="curation-body">
                         <div class="curation-album" id="curation-album"></div>
                         <div class="curation-candidates" id="curation-candidates"></div>
-                        <p class="muted" id="curation-empty">Click “Scan playlist” to load candidates.</p>
+                        <p class="muted" id="curation-empty">Idle</p>
                     </div>
                 </div>
             </section>
@@ -94,4 +90,3 @@
 <script type="module" src="/dist/curation.js"></script>
 </body>
 </html>
-

@@ -41,12 +41,23 @@ export async function injectHeader() {
         });
         render();
     };
-    const emitAuthState = (loggedIn) => {
+    const emitAuthState = (loggedIn, isAdmin) => {
         try {
-            window.dispatchEvent(new CustomEvent("vm:auth-state", { detail: { loggedIn } }));
+            window.dispatchEvent(new CustomEvent("vm:auth-state", { detail: { loggedIn, isAdmin } }));
         }
         catch (_a) {
             /* ignore */
+        }
+    };
+    const updateCurationLink = (isAdmin) => {
+        const curationLink = container.querySelector('a[href="/curation.html"]');
+        if (curationLink?.parentElement) {
+            if (isAdmin) {
+                curationLink.parentElement.classList.remove("hidden");
+            }
+            else {
+                curationLink.parentElement.classList.add("hidden");
+            }
         }
     };
     try {
@@ -56,7 +67,10 @@ export async function injectHeader() {
         container.innerHTML = await res.text();
         initThemeToggle();
         // Aktiver Link markieren
-        const path = location.pathname.toLowerCase();
+        const rawPath = (location.pathname || "/").toLowerCase().replace(/\/+$/, "") || "/";
+        const path = rawPath === "/" || rawPath.endsWith("/home.html")
+            ? "/home.html"
+            : (rawPath.endsWith("/playlist.html") ? "/playlist.html" : rawPath);
         container.querySelectorAll("a[href]").forEach((a) => {
             const hrefPath = a.pathname.toLowerCase();
             const normalizedHref = hrefPath === "/" ? "/home.html" : hrefPath;
@@ -72,31 +86,30 @@ export async function injectHeader() {
             btn.id = "spotify-login-btn";
             btn.href = "#";
             btn.className = loggedIn ? "spotify-btn logged-in" : "spotify-btn";
+            const iconSrc = loggedIn ? "/design/spotify_green.svg" : "/design/spotify_trans_black.svg";
+            const iconClass = loggedIn ? "spotify-logo spotify-logo-green" : "spotify-logo spotify-logo-white";
             btn.innerHTML = `
-                <img src="/assets/spotify-logo.svg" alt="Spotify">
+                <img class="${iconClass}" src="${iconSrc}" alt="" aria-hidden="true">
                 ${loggedIn ? "Log out" : "Log in with Spotify"}
             `;
             li.appendChild(btn);
             return li;
         };
-        const updateSpotifyButton = (loggedIn) => {
+        const updateSpotifyButton = (loggedIn, isAdmin = false) => {
             const navRight = container.querySelector(".navigation.navigation-right");
             if (!navRight)
                 return;
-            // Remove old
             const oldBtnLi = navRight.querySelector("#spotify-login-btn")?.parentElement;
             if (oldBtnLi)
                 oldBtnLi.remove();
-            // Add new
             navRight.appendChild(createSpotifyButton(loggedIn));
-            emitAuthState(!!loggedIn);
-            // Event hinzufügen
+            emitAuthState(!!loggedIn, !!isAdmin);
+            updateCurationLink(isAdmin);
             const spotifyBtn = container.querySelector("#spotify-login-btn");
             if (spotifyBtn) {
                 spotifyBtn.addEventListener("click", async (event) => {
                     event.preventDefault();
                     if (loggedIn) {
-                        // Logout
                         try {
                             const r = await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
                             if (!r.ok && r.status !== 204)
@@ -104,10 +117,9 @@ export async function injectHeader() {
                         }
                         catch (_a) {
                         }
-                        updateSpotifyButton(false);
+                        updateSpotifyButton(false, false);
                     }
                     else {
-                        // Login
                         try {
                             const r = await fetch("/api/auth/login", { method: "POST", credentials: "include" });
                             if (!r.ok)
@@ -116,14 +128,13 @@ export async function injectHeader() {
                             const url = data?.authorizeUrl;
                             if (url) {
                                 window.open(url, "_blank");
-                                // Poll up to 2 minutes for login completion
                                 const start = Date.now();
                                 const poll = setInterval(async () => {
                                     const statusRes = await fetch("/api/auth/status", { cache: "no-cache", credentials: "include" });
                                     if (statusRes.ok) {
                                         const statusData = await statusRes.json();
                                         if (statusData?.loggedIn) {
-                                            updateSpotifyButton(true);
+                                            updateSpotifyButton(true, statusData?.isAdmin === true);
                                             clearInterval(poll);
                                         }
                                     }
@@ -133,20 +144,22 @@ export async function injectHeader() {
                             }
                         }
                         catch (e) {
-                            alert("Login could not be started: " + (e instanceof Error ? e.message : String(e)));
+                            console.warn("Login could not be started", e);
+                            window.dispatchEvent(new CustomEvent("vm:auth-error", {
+                                detail: { message: "Login could not be started. Please try again." }
+                            }));
                         }
                     }
                 });
             }
         };
-        // Initial mit nicht-eingeloggt starten
-        updateSpotifyButton(false);
+        updateSpotifyButton(false, false);
         try {
             const statusRes = await fetch("/api/auth/status", { cache: "no-cache", credentials: "include" });
             if (statusRes.ok) {
                 const status = await statusRes.json();
                 if (typeof status?.loggedIn === "boolean") {
-                    updateSpotifyButton(status.loggedIn);
+                    updateSpotifyButton(status.loggedIn, status?.isAdmin === true);
                 }
             }
         }

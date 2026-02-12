@@ -36,7 +36,9 @@ export function applyViewMode(mode, state, renderTracks, options = {}) {
     const buttons = document.querySelectorAll("#view-toggle .view-toggle-btn");
     buttons.forEach((btn) => {
         const btnMode = btn.dataset.mode === "grid" ? "grid" : "list";
-        btn.classList.toggle("active", btnMode === normalized);
+        const isActive = btnMode === normalized;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-pressed", String(isActive));
     });
     
     if (options?.rerender && state.aggregated) {
@@ -57,6 +59,13 @@ export function initViewToggle(state, renderTracks) {
         
         const mode = target.dataset.mode === "grid" ? "grid" : "list";
         applyViewMode(mode, state, renderTracks, { rerender: true });
+        try {
+            window.dispatchEvent(new CustomEvent("vm:playlist-status", {
+                detail: { message: `View mode: ${mode}.` }
+            }));
+        }
+        catch (_a) {
+        }
     });
     
     applyViewMode(state.viewMode, state, renderTracks, { rerender: false });

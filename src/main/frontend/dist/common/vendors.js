@@ -11,6 +11,8 @@ const DEFAULT_VENDORS = [
         id: "hhv",
         label: "H",
         name: "HHV",
+        iconLight: "/design/hhv_trans_black.svg",
+        iconDark: "/design/hhv_trans_white.svg",
         urlTemplate: "https://www.hhv.de/en/catalog/filter/search-S11?af=true&term={query}",
         enabled: true,
     },
@@ -18,6 +20,8 @@ const DEFAULT_VENDORS = [
         id: "jpc",
         label: "J",
         name: "JPC",
+        iconLight: "/design/jpc_trans_black.svg",
+        iconDark: "/design/jpc_trans_white.svg",
         urlTemplate: "https://www.jpc.de/s/{query}",
         enabled: true,
     },
@@ -25,6 +29,8 @@ const DEFAULT_VENDORS = [
         id: "amazon",
         label: "A",
         name: "Amazon",
+        iconLight: "/design/amazon_trans_black.svg",
+        iconDark: "/design/amazon_trans_white.svg",
         urlTemplate: "https://www.amazon.de/s?k={query}+vinyl",
         enabled: true,
     },
@@ -55,12 +61,20 @@ export function addVendor(vendor) {
         console.warn("Invalid vendor config:", vendor);
         return false;
     }
+    const iconLight = typeof vendor.iconLight === "string"
+        ? vendor.iconLight
+        : (typeof vendor?.icon?.light === "string" ? vendor.icon.light : null);
+    const iconDark = typeof vendor.iconDark === "string"
+        ? vendor.iconDark
+        : (typeof vendor?.icon?.dark === "string" ? vendor.icon.dark : null);
     // Remove existing vendor with same ID
     vendors = vendors.filter(v => v.id !== vendor.id);
     vendors.push({
         id: vendor.id,
         label: vendor.label || vendor.id.charAt(0).toUpperCase(),
         name: vendor.name || vendor.id,
+        iconLight,
+        iconDark,
         urlTemplate: vendor.urlTemplate,
         enabled: vendor.enabled !== false,
     });
