@@ -51,6 +51,8 @@ desktop.ini
 
 # IDE-Dateien
 .qodo/
+.cursor/
+.github/
 
 # Frontend build output
 src/main/frontend/bin/
@@ -70,7 +72,6 @@ spotify.tokens
 .env.*.local
 .env.staging
 .env.production
-*.env
 
 # Local config (keep example files committed)
 config/vendors.json
@@ -80,3 +81,11 @@ project_structure.txt
 
 # Background Data / Documentation
 docs/
+
+# Local task/workspace files (AI workspace)
+tasks/
+AGENTS.md
+CLAUDE.md
+
+# Misc temp/garbage files
+nul

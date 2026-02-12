@@ -1,6 +1,6 @@
-# AGENTS.md — Zemni (AI Orchestration & Guidelines)
+# CLAUDE.md — VinylMatch (AI Orchestration & Guidelines)
 
-You are an expert Full-Stack Engineer working on **Zemni**, a Next.js 14 (App Router) app for processing lecture PDFs into exam-oriented summaries and flashcards.
+You are an expert Full-Stack Engineer working on **VinylMatch**, a Java 21 web app that matches Spotify playlist tracks to vinyl releases on Discogs.
 
 ---
 
@@ -21,8 +21,8 @@ You are an expert Full-Stack Engineer working on **Zemni**, a Next.js 14 (App Ro
 - Review `tasks/lessons.md` at the start of every session.
 
 ### 4. Verification & Elegance
-- **Proof of Work**: Never mark a task done without proving it works (npm run build, tests, logs, or UI verification).
-- **The Elegance Check**: For complex changes, pause and ask: "Is there a more elegant way?" 
+- **Proof of Work**: Never mark a task done without proving it works (`mvn test`, `mvn package`, or UI verification).
+- **The Elegance Check**: For complex changes, pause and ask: "Is there a more elegant way?"
 - **Bug Fixing**: Fix bugs autonomously. Point at logs/errors, then resolve without hand-holding.
 
 ---
@@ -31,30 +31,35 @@ You are an expert Full-Stack Engineer working on **Zemni**, a Next.js 14 (App Ro
 
 | Tool | Usage |
 | :--- | :--- |
-| **Framework** | Next.js 14 (App Router), TypeScript |
-| **Backend** | Convex (Database/Mutations/Queries) |
-| **Auth** | Clerk (`components/auth/ClerkWrapper.tsx`) |
-| **Styling** | Tailwind CSS + `app/globals.css` |
-| **AI** | OpenRouter (Config in `config/`) |
-| **Errors** | Sentry (`lib/error-tracking.ts`) |
+| **Language** | Java 21 |
+| **Build** | Maven 3.8+ (bundled in `.tools/maven/` for Windows) |
+| **Backend** | Custom HTTP server (`Server/http/`) |
+| **Auth** | Spotify OAuth (`Server/auth/SpotifyOAuthService.java`) |
+| **Frontend** | Vanilla JS/CSS (`src/main/frontend/`) |
+| **Cache** | Redis (sessions, curated links) |
+| **External APIs** | Spotify Web API, Discogs API |
 
 **Executable Commands:**
-- `npm run dev` (Runs on `http://localhost:3420`)
-- `npm run build` / `npm run start`
-- `npx tsc --noEmit` (Type check)
-- `npx vitest run [path]` (Test single file)
+- `mvn test` (Run tests with JaCoCo coverage)
+- `mvn package` (Build fat JAR → `target/VinylMatch.jar`)
+- `mvn compile` (Compile only, no tests)
+- `java -jar target/VinylMatch.jar` (Run server on port 8888)
+
+**Windows (bundled Maven):**
+- `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd test`
+- `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd package`
 
 ---
 
-## 📂 Project Structure & Exports
+## 📂 Project Structure
 
-- `app/api/`: Server-only endpoints. **Never call OpenRouter/Notion from the client.**
-- `app/settings/`: Tab-based settings (Preferred over Modals).
-- `components/features/`: Feature logic. **Must export via `index.ts`.**
-- `components/ui/`: Atomic UI components. **Must export via `index.ts`.**
-- `hooks/`: Main app state (e.g., `useUIState`, `useHistoryManagement`).
-- `lib/handlers/`: Complex orchestration logic (e.g., `summary-actions.ts`).
-- `tasks/`: **Your Workspace** (`todo.md`, `lessons.md`).
+- `src/main/java/Server/` — HTTP server, routes, sessions, filters, rate limiting
+- `src/main/java/com/hctamlyniv/discogs/` — Discogs client, cache, normalization, models
+- `src/main/java/com/hctamlyniv/spotify/` — Spotify playlist parsing
+- `src/main/java/com/hctamlyniv/curation/` — Curated match storage (Redis)
+- `src/main/frontend/` — Static frontend (HTML/CSS/JS)
+- `config/` — Vendor links config, env examples
+- `tasks/` — AI workspace (`todo.md`, `lessons.md`)
 
 ---
 
@@ -62,30 +67,32 @@ You are an expert Full-Stack Engineer working on **Zemni**, a Next.js 14 (App Ro
 
 ### ✅ Always Do
 - Use **Small, focused changes** with minimal diffs.
-- Maintain a **1-100 scale** for all benchmarks.
-- Use **Server-side logic** for API calls (Notion, OpenRouter).
-- Ensure `subscription_tier` is present in all model JSONs.
+- Use **Server-side logic** for all API calls (Spotify, Discogs).
+- If a UI version badge is shown (e.g., `.hero-logo-wrap::after`), increment its numeric version when that design is changed.
+- **Commit format**: Use `(#xxxx)` numbering at the end of commit messages (e.g., `Add feature description (#0025)`).
 
 ### 🚫 Never Do (Anti-Patterns)
 - **AI-Slop Design**: Avoid excessive gradients and unnecessary container nesting. Keep it clean and flat.
 - **Unrequested Refactors**: No large-scale directory moves or global reformatting.
-- **Client-Side Secrets**: Never log or expose `.env` variables or PII.
-- **Duplicate Logic**: Check `lib/utils` or `types/` before creating new helpers.
-- **Framework Bloat**: Do not add new styling libraries or frameworks.
+- **Client-Side Secrets**: Never log or expose `.env` variables or API tokens.
+- **Duplicate Logic**: Check existing services before creating new helpers.
+- **Framework Bloat**: Do not add new frontend frameworks or libraries.
 
 ---
 
-## ⚠️ Known Issues & Workarounds (MUST READ)
+## ⚠️ Known Issues & Workarounds
 
-### Clerk Hydration/SSR Issues
-- **Symptoms**: "SignedIn can only be used within ClerkProvider" errors during Hot Reload.
-- **The Fix**: Do not try to solve this with longer delays.
-- **Pattern**: Use `ClerkWrapper.tsx` (has a 2s delay) and `ClerkErrorBoundary`.
-- **Status**: These errors are expected in Dev during Hot Reload; do not attempt "fixes" that change the Provider logic.
+### Spotify Redirect URI
+- Spotify does not allow `localhost` as redirect URI. Use `127.0.0.1` (or `[::1]` for IPv6).
+- Local dev: `http://127.0.0.1:8888/api/auth/callback`
 
-### Model Configurations
-- `config/openrouter-models.json` is your source of truth for pricing/availability.
-- If a model is unavailable, `ModelsTab.tsx` should trigger an upgrade state based on `subscription_tier`.
+### JaCoCo Coverage Gates
+- Minimum instruction coverage is set to `0.53` in `pom.xml`.
+- If coverage drops, update the threshold or add tests—don't disable the gate.
+
+### Discogs Rate Limiting
+- Discogs API has rate limits. The app uses caching and backoff.
+- Treat `429`/`5xx` as transient; retry with backoff.
 
 ---
 
