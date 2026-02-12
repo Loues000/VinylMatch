@@ -36,10 +36,18 @@ public class AuthRoutes {
     }
 
     public void register(HttpServer server) {
-        server.createContext("/api/auth/status", this::handleStatus).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/auth/login", this::handleLogin).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/auth/logout", this::handleLogout).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/auth/callback", this::handleCallback).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/auth/status", this::handleStatus).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/auth/login", this::handleLogin).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/auth/logout", this::handleLogout).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/auth/callback", this::handleCallback).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
     }
 
     private void handleStatus(HttpExchange exchange) throws IOException {
@@ -54,8 +62,25 @@ public class AuthRoutes {
             // Check session-based login first
             SpotifySession session = sessionStore.getSession(exchange);
             boolean loggedIn = session != null && session.isLoggedIn();
+            
+            String userId = null;
+            boolean isAdmin = false;
+            
+            if (loggedIn && session != null) {
+                userId = session.getUserId();
+                if (userId != null && !userId.isBlank()) {
+                    isAdmin = com.hctamlyniv.Config.getAdminUserIds().contains(userId);
+                }
+            }
 
-            HttpUtils.sendJson(exchange, 200, Map.of("loggedIn", loggedIn));
+            Map<String, Object> response = new java.util.HashMap<>();
+            response.put("loggedIn", loggedIn);
+            if (userId != null && !userId.isBlank()) {
+                response.put("userId", userId);
+                response.put("isAdmin", isAdmin);
+            }
+
+            HttpUtils.sendJson(exchange, 200, response);
         } catch (Exception e) {
             log.warn("Auth status failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "auth_status_failed", "Failed to read auth status");
@@ -162,14 +187,20 @@ public class AuthRoutes {
 
             // Get or create session
             SpotifySession session = sessionStore.getSession(exchange);
+            String receivedState = state;
             if (session == null) {
                 String host = exchange.getRequestHeaders().getFirst("Host");
                 log.warn("No session cookie on Spotify callback (Host={}). This is usually a hostname mismatch (localhost vs 127.0.0.1) between /api/auth/login and the redirect URI. Ensure you use the same hostname (prefer 127.0.0.1) for both login and callback.", host);
                 session = sessionStore.createSession(exchange);
+                log.info("Created new session for callback: {}", session.getSessionId());
+            } else {
+                log.info("Found existing session for callback: {}", session.getSessionId());
             }
 
+            log.info("Processing callback with code length: {}, state: {}", code != null ? code.length() : 0, receivedState);
+            
             // Exchange code for tokens
-            boolean success = oauthService.exchangeCodeForTokens(code, state, session);
+            boolean success = oauthService.exchangeCodeForTokens(code, receivedState, session);
             
             if (success) {
                 try {
@@ -229,6 +260,29 @@ public class AuthRoutes {
     }
 
     /**
+     * Resolves the best available token for playlist loading.
+     * Prefers a user session token and falls back to app-level client credentials.
+     */
+    public AccessTokenResolution resolvePlaylistAccessToken(HttpExchange exchange) {
+        SpotifySession session = sessionStore.getSession(exchange);
+        if (session != null && session.isLoggedIn()) {
+            if (session.isTokenExpired()) {
+                oauthService.refreshAccessToken(session);
+            }
+            String token = session.getAccessToken();
+            if (token != null && !token.isBlank()) {
+                return new AccessTokenResolution(token, true);
+            }
+        }
+
+        String appToken = oauthService.getClientCredentialsAccessToken().orElse(null);
+        if (appToken != null && !appToken.isBlank()) {
+            return new AccessTokenResolution(appToken, false);
+        }
+        return new AccessTokenResolution(null, false);
+    }
+
+    /**
      * Gets a user signature for cache keying.
      */
     public String getUserSignature(HttpExchange exchange) {
@@ -253,6 +307,15 @@ public class AuthRoutes {
     private void sendCallbackHtml(HttpExchange exchange, boolean success, String message) throws IOException {
         String status = success ? "Login successful" : "Login failed";
         String color = success ? "#1DB954" : "#e74c3c";
+        String redirectScript = success ? """
+                    // Redirect to main page after 1.5 seconds
+                    setTimeout(function() {
+                        window.location.href = '/';
+                    }, 1500);
+                    """ : """
+                    // Stay on error page so user can read the message
+                    """;
+        String closeHint = success ? "Redirecting to app..." : "You can close this window now.";
         String html = """
             <!DOCTYPE html>
             <html>
@@ -291,22 +354,39 @@ public class AuthRoutes {
                         font-size: 14px;
                         opacity: 0.6;
                     }
+                    .redirect-spinner {
+                        margin-top: 20px;
+                        width: 24px;
+                        height: 24px;
+                        border: 2px solid rgba(255,255,255,0.3);
+                        border-top-color: %s;
+                        border-radius: 50%%;
+                        animation: spin 1s linear infinite;
+                        display: inline-block;
+                    }
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
                 </style>
             </head>
             <body>
                 <div class="card">
                     <h1>%s</h1>
                     <p>%s</p>
-                    <p class="close-hint">You can close this window now.</p>
+                    <p class="close-hint">%s</p>
+                    %s
                 </div>
                 <script>
                     if (window.opener) {
                         window.opener.postMessage({ type: 'spotify-auth-callback', success: %s }, '*');
                     }
+                    %s
                 </script>
             </body>
             </html>
-            """.formatted(status, color, status, message, success);
+            """.formatted(status, color, color, status, message, closeHint, 
+                         success ? "<div class='redirect-spinner'></div>" : "",
+                         success, redirectScript);
 
         byte[] body = html.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "text/html; charset=utf-8");
@@ -315,4 +395,6 @@ public class AuthRoutes {
             os.write(body);
         }
     }
+
+    public record AccessTokenResolution(String token, boolean userAuthenticated) {}
 }

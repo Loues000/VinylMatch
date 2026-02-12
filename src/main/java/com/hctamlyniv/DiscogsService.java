@@ -1,6 +1,8 @@
 package com.hctamlyniv;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hctamlyniv.curation.CuratedLinkStore;
+import com.hctamlyniv.curation.RedisCuratedLinkStore;
 import com.hctamlyniv.discogs.DiscogsApiClient;
 import com.hctamlyniv.discogs.DiscogsCacheStore;
 import com.hctamlyniv.discogs.DiscogsNormalizer;
@@ -27,27 +29,39 @@ import java.util.Set;
 public class DiscogsService {
 
     private static final Logger log = LoggerFactory.getLogger(DiscogsService.class);
+    private static final int TRANSIENT_RETRY_LIMIT = 3;
+    private static final long TRANSIENT_RETRY_BASE_DELAY_MS = 450L;
 
     private final ObjectMapper mapper;
     private final DiscogsCacheStore cacheStore;
+    private final CuratedLinkStore curatedLinkStore;
 
     private final String userAgent;
     private final DiscogsApiClient apiClient;
 
     public DiscogsService(String token, String userAgent) {
-        this(token, userAgent, null);
+        this(token, null, userAgent, null, null, null);
     }
 
     public DiscogsService(String token, String userAgent, Path cacheDir) {
+        this(token, null, userAgent, null, null, cacheDir);
+    }
+
+    public DiscogsService(String token, String tokenSecret, String userAgent, String consumerKey, String consumerSecret) {
+        this(token, tokenSecret, userAgent, consumerKey, consumerSecret, null);
+    }
+
+    public DiscogsService(String token, String tokenSecret, String userAgent, String consumerKey, String consumerSecret, Path cacheDir) {
         this.userAgent = (userAgent == null || userAgent.isBlank()) ? "VinylMatch/1.0" : userAgent;
 
         this.mapper = new ObjectMapper();
         this.cacheStore = (cacheDir == null) ? new DiscogsCacheStore(mapper) : new DiscogsCacheStore(cacheDir, mapper);
+        this.curatedLinkStore = new RedisCuratedLinkStore(mapper);
 
         HttpClient http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
-        this.apiClient = new DiscogsApiClient(http, mapper, token, this.userAgent);
+        this.apiClient = new DiscogsApiClient(http, mapper, token, this.userAgent, null, consumerKey, consumerSecret, tokenSecret);
 
         cacheStore.load();
     }
@@ -70,15 +84,28 @@ public class DiscogsService {
         final String origTrack = trackTitle == null ? null : trackTitle.trim();
         final Integer year = releaseYear;
         final String cacheKey = cacheStore.buildCacheKey(origArtist, origAlbum, year);
+        final String normalizedKey = CuratedLinkStore.normalizeKey(origArtist, origAlbum, year);
+
+        Optional<CuratedLink> curatedLink = curatedLinkStore.find(normalizedKey);
+        if (curatedLink.isPresent() && curatedLink.get().url() != null) {
+            return Optional.of(curatedLink.get().url());
+        }
+        
+        if (barcode != null && !barcode.isBlank()) {
+            curatedLink = curatedLinkStore.findByBarcode(barcode);
+            if (curatedLink.isPresent() && curatedLink.get().url() != null) {
+                return Optional.of(curatedLink.get().url());
+            }
+        }
 
         Optional<String> curated = cacheStore.findCuratedLink(cacheKey, barcode);
-        if (curated.isPresent()) {
+        if (curated.isPresent() && isCacheFinalResult(curated.get())) {
             return curated;
         }
 
         if (barcode != null && !barcode.isBlank()) {
             Optional<String> cachedByBarcode = cacheStore.peekCachedUri(null, null, null, barcode);
-            if (cachedByBarcode.isPresent()) {
+            if (cachedByBarcode.isPresent() && isCacheFinalResult(cachedByBarcode.get())) {
                 return cachedByBarcode;
             }
             if (apiClient.isConfigured()) {
@@ -95,7 +122,7 @@ public class DiscogsService {
         }
 
         Optional<String> cached = cacheStore.peekCachedUri(origArtist, origAlbum, year, null);
-        if (cached.isPresent()) {
+        if (cached.isPresent() && isCacheFinalResult(cached.get())) {
             return cached;
         }
 
@@ -110,52 +137,67 @@ public class DiscogsService {
             return Optional.of(fallback);
         }
 
-        try {
-            Optional<String> result;
+        int attempt = 0;
+        while (true) {
+            try {
+                Optional<String> result;
 
-            String artistStrict = DiscogsNormalizer.normalizeArtistLevel(origArtist, DiscogsNormalizer.NormLevel.HEAVY);
+                String artistStrict = DiscogsNormalizer.normalizeArtistLevel(origArtist, DiscogsNormalizer.NormLevel.HEAVY);
 
-            // Pass A: free-text q search (raw album)
-            String q1 = ((artistStrict != null) ? artistStrict : "") + " " + ((origAlbum != null) ? origAlbum : "");
-            result = apiClient.searchOnceQ(q1, year, artistStrict, origAlbum);
-            if (result.isPresent()) {
-                cacheStore.rememberResult(cacheKey, result.get(), barcode);
-                return result;
+                // Pass A: free-text q search (raw album)
+                String q1 = ((artistStrict != null) ? artistStrict : "") + " " + ((origAlbum != null) ? origAlbum : "");
+                result = apiClient.searchOnceQ(q1, year, artistStrict, origAlbum);
+                if (result.isPresent()) {
+                    cacheStore.rememberResult(cacheKey, result.get(), barcode);
+                    return result;
+                }
+
+                // Pass B: free-text q search (lightly normalized album)
+                String lightAlbum = DiscogsNormalizer.normalizeTitleLevel(origAlbum, DiscogsNormalizer.NormLevel.LIGHT);
+                String q2 = ((artistStrict != null) ? artistStrict : "") + " " + ((lightAlbum != null) ? lightAlbum : "");
+                result = apiClient.searchOnceQ(q2, year, artistStrict, origAlbum);
+                if (result.isPresent()) {
+                    cacheStore.rememberResult(cacheKey, result.get(), barcode);
+                    return result;
+                }
+
+                // Structured fallbacks (master preferred)
+                result = apiClient.searchOnce(artistStrict, origAlbum, year, origTrack, true);
+                if (result.isPresent()) { cacheStore.rememberResult(cacheKey, result.get(), barcode); return result; }
+
+                result = apiClient.searchOnce(artistStrict, origAlbum, year, origTrack, false);
+                if (result.isPresent()) { cacheStore.rememberResult(cacheKey, result.get(), barcode); return result; }
+
+                result = apiClient.searchOnce(artistStrict, origAlbum, null, origTrack, true);
+                if (result.isPresent()) { cacheStore.rememberResult(cacheKey, result.get(), barcode); return result; }
+
+                result = apiClient.searchOnce(artistStrict, origAlbum, null, origTrack, false);
+                if (result.isPresent()) { cacheStore.rememberResult(cacheKey, result.get(), barcode); return result; }
+
+                String fallback = DiscogsUrlUtils.buildWebSearchUrl(artistStrict, origAlbum, year);
+                cacheStore.rememberResult(cacheKey, fallback, barcode);
+                return Optional.of(fallback);
+            } catch (Exception e) {
+                boolean transientError = isTransientDiscogsError(e);
+                if (transientError && attempt < TRANSIENT_RETRY_LIMIT) {
+                    attempt++;
+                    sleepBackoff(attempt);
+                    continue;
+                }
+
+                String fallback = DiscogsUrlUtils.buildWebSearchUrl(
+                        DiscogsNormalizer.normalizeArtistLevel(artist, DiscogsNormalizer.NormLevel.HEAVY),
+                        album,
+                        releaseYear
+                );
+
+                if (!transientError) {
+                    cacheStore.rememberResult(cacheKey, fallback, barcode);
+                } else {
+                    log.debug("Discogs transient error for {} after {} retries; returning uncached fallback", cacheKey, attempt);
+                }
+                return Optional.of(fallback);
             }
-
-            // Pass B: free-text q search (lightly normalized album)
-            String lightAlbum = DiscogsNormalizer.normalizeTitleLevel(origAlbum, DiscogsNormalizer.NormLevel.LIGHT);
-            String q2 = ((artistStrict != null) ? artistStrict : "") + " " + ((lightAlbum != null) ? lightAlbum : "");
-            result = apiClient.searchOnceQ(q2, year, artistStrict, origAlbum);
-            if (result.isPresent()) {
-                cacheStore.rememberResult(cacheKey, result.get(), barcode);
-                return result;
-            }
-
-            // Structured fallbacks (master preferred)
-            result = apiClient.searchOnce(artistStrict, origAlbum, year, origTrack, true);
-            if (result.isPresent()) { cacheStore.rememberResult(cacheKey, result.get(), barcode); return result; }
-
-            result = apiClient.searchOnce(artistStrict, origAlbum, year, origTrack, false);
-            if (result.isPresent()) { cacheStore.rememberResult(cacheKey, result.get(), barcode); return result; }
-
-            result = apiClient.searchOnce(artistStrict, origAlbum, null, origTrack, true);
-            if (result.isPresent()) { cacheStore.rememberResult(cacheKey, result.get(), barcode); return result; }
-
-            result = apiClient.searchOnce(artistStrict, origAlbum, null, origTrack, false);
-            if (result.isPresent()) { cacheStore.rememberResult(cacheKey, result.get(), barcode); return result; }
-
-            String fallback = DiscogsUrlUtils.buildWebSearchUrl(artistStrict, origAlbum, year);
-            cacheStore.rememberResult(cacheKey, fallback, barcode);
-            return Optional.of(fallback);
-        } catch (Exception e) {
-            String fallback = DiscogsUrlUtils.buildWebSearchUrl(
-                    DiscogsNormalizer.normalizeArtistLevel(artist, DiscogsNormalizer.NormLevel.HEAVY),
-                    album,
-                    releaseYear
-            );
-            cacheStore.rememberResult(cacheKey, fallback, barcode);
-            return Optional.of(fallback);
         }
     }
 
@@ -220,5 +262,40 @@ public class DiscogsService {
                 releaseYear
         );
         return cacheStore.saveCuratedLink(cacheKey, artist, album, releaseYear, trackTitle, barcode, url, thumb);
+    }
+
+    private static boolean isTransientDiscogsError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.startsWith("discogs_transient_status:")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static void sleepBackoff(int attempt) {
+        long delay = TRANSIENT_RETRY_BASE_DELAY_MS * Math.max(1, attempt);
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private boolean isCacheFinalResult(String url) {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        if (!apiClient.isConfigured()) {
+            return true;
+        }
+        return !isSearchFallbackUrl(url);
+    }
+
+    private static boolean isSearchFallbackUrl(String url) {
+        return url != null && url.toLowerCase().contains("/search");
     }
 }

@@ -50,8 +50,7 @@ class ModelTest {
 
     @Test
     void discogsSessionRecordHoldsValues() {
-        DiscogsSession session = new DiscogsSession("sid", "t", "ua", "u", "n");
+        DiscogsSession session = new DiscogsSession("sid", "t", null, "ua", "u", "n");
         assertEquals("u", session.username());
     }
 }
-

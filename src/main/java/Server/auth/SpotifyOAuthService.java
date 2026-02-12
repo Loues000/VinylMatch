@@ -5,6 +5,7 @@ import com.hctamlyniv.Config;
 import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.SpotifyHttpManager;
 import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
+import se.michaelthelin.spotify.model_objects.credentials.ClientCredentials;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,7 @@ import java.net.URI;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -32,6 +34,9 @@ public class SpotifyOAuthService {
     private final URI redirectUri;
     private final boolean redirectUriExplicit;
     private final SpotifyApi spotifyApi;
+    private final Object appTokenLock = new Object();
+    private volatile String appAccessToken;
+    private volatile long appTokenExpiresAt;
 
     public SpotifyOAuthService() {
         this.clientId = trimOrNull(Config.getSpotifyClientId());
@@ -90,6 +95,52 @@ public class SpotifyOAuthService {
     }
 
     /**
+     * Resolves a Spotify app token using client credentials for anonymous public playlist access.
+     */
+    public Optional<String> getClientCredentialsAccessToken() {
+        if (!isConfigured()) {
+            return Optional.empty();
+        }
+
+        long now = System.currentTimeMillis();
+        String cached = appAccessToken;
+        if (cached != null && !cached.isBlank() && now < appTokenExpiresAt) {
+            return Optional.of(cached);
+        }
+
+        synchronized (appTokenLock) {
+            now = System.currentTimeMillis();
+            cached = appAccessToken;
+            if (cached != null && !cached.isBlank() && now < appTokenExpiresAt) {
+                return Optional.of(cached);
+            }
+
+            try {
+                SpotifyApi api = new SpotifyApi.Builder()
+                        .setClientId(clientId)
+                        .setClientSecret(clientSecret)
+                        .build();
+                ClientCredentials credentials = api.clientCredentials().build().execute();
+                String token = credentials != null ? credentials.getAccessToken() : null;
+                Integer expiresIn = credentials != null ? credentials.getExpiresIn() : null;
+                if (token == null || token.isBlank()) {
+                    return Optional.empty();
+                }
+
+                int safeExpires = Math.max(30, expiresIn != null ? expiresIn : 3600) - 30;
+                appAccessToken = token;
+                appTokenExpiresAt = System.currentTimeMillis() + (safeExpires * 1000L);
+                return Optional.of(token);
+            } catch (Exception e) {
+                log.warn("Spotify client credentials token request failed: {}", e.getMessage());
+                appAccessToken = null;
+                appTokenExpiresAt = 0L;
+                return Optional.empty();
+            }
+        }
+    }
+
+    /**
      * Generates an authorization URL with CSRF state token.
      * 
      * @param sessionId The session ID to associate with this authorization attempt
@@ -138,24 +189,28 @@ public class SpotifyOAuthService {
      */
     public boolean exchangeCodeForTokens(String code, String state, SpotifySession session) {
         if (!isConfigured()) {
+            log.error("Spotify OAuth not configured - clientId or clientSecret missing");
             return false;
         }
 
         // Validate state token
         PendingAuth pending = pendingAuthorizations.remove(state);
         if (pending == null) {
-            log.warn("Invalid or expired OAuth state token");
+            log.warn("Invalid or expired OAuth state token. Available states: {}", pendingAuthorizations.keySet());
             return false;
         }
+        
+        log.info("Found pending auth for session: {}, redirectUri: {}", pending.sessionId(), pending.redirectUri());
 
         // Verify session ID matches
         if (!pending.sessionId().equals(session.getSessionId())) {
-            log.warn("OAuth session id mismatch");
+            log.warn("OAuth session id mismatch - pending: {}, current: {}", pending.sessionId(), session.getSessionId());
             return false;
         }
 
         try {
             SpotifyApi api = apiForRedirectUri(pending.redirectUri());
+            log.info("Exchanging code for tokens with redirect URI: {}", pending.redirectUri());
             AuthorizationCodeCredentials credentials = api.authorizationCode(code).build().execute();
 
             session.setAccessToken(credentials.getAccessToken());
@@ -165,11 +220,40 @@ public class SpotifyOAuthService {
             long expiresInMs = Math.max(0, (credentials.getExpiresIn() - 30)) * 1000L;
             session.setTokenExpiresAt(System.currentTimeMillis() + expiresInMs);
 
+            // Fetch user ID from Spotify API
+            String userId = fetchCurrentUserId(credentials.getAccessToken());
+            if (userId != null && !userId.isBlank()) {
+                session.setUserId(userId);
+                log.info("Spotify user ID obtained: {}", userId);
+            } else {
+                log.warn("Could not fetch Spotify user ID - token may be invalid");
+            }
+
             log.info("Spotify OAuth tokens obtained successfully");
             return true;
         } catch (Exception e) {
-            log.warn("Spotify OAuth token exchange failed", e);
+            log.error("Spotify OAuth token exchange failed: {}", e.getMessage(), e);
             return false;
+        }
+    }
+
+    /**
+     * Fetches the current user's Spotify user ID using the access token.
+     */
+    private String fetchCurrentUserId(String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            return null;
+        }
+        try {
+            SpotifyApi api = new SpotifyApi.Builder()
+                    .setAccessToken(accessToken)
+                    .build();
+            
+            var user = api.getCurrentUsersProfile().build().execute();
+            return user != null ? user.getId() : null;
+        } catch (Exception e) {
+            log.warn("Failed to fetch Spotify user profile: {}", e.getMessage());
+            return null;
         }
     }
 

@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -30,23 +31,53 @@ public class DiscogsApiClient {
     private final HttpClient http;
     private final ObjectMapper mapper;
     private final String token;
+    private final String tokenSecret;
+    private final String consumerKey;
+    private final String consumerSecret;
     private final String userAgent;
     private final String apiBase;
 
     public DiscogsApiClient(HttpClient http, ObjectMapper mapper, String token, String userAgent) {
-        this(http, mapper, token, userAgent, DEFAULT_API_BASE);
+        this(http, mapper, token, userAgent, DEFAULT_API_BASE, null, null, null);
     }
 
     public DiscogsApiClient(HttpClient http, ObjectMapper mapper, String token, String userAgent, String apiBase) {
+        this(http, mapper, token, userAgent, apiBase, null, null, null);
+    }
+
+    public DiscogsApiClient(
+            HttpClient http,
+            ObjectMapper mapper,
+            String token,
+            String userAgent,
+            String apiBase,
+            String consumerKey,
+            String consumerSecret,
+            String tokenSecret
+    ) {
         this.http = http;
         this.mapper = mapper;
         this.token = token;
+        this.tokenSecret = tokenSecret;
+        this.consumerKey = consumerKey;
+        this.consumerSecret = consumerSecret;
         this.userAgent = userAgent;
         this.apiBase = (apiBase == null || apiBase.isBlank()) ? DEFAULT_API_BASE : apiBase.trim();
     }
 
     public boolean isConfigured() {
-        return token != null && !token.isBlank();
+        return hasUserTokenAuth() || hasOAuthCredentials();
+    }
+
+    private boolean hasUserTokenAuth() {
+        return token != null && !token.isBlank() && !hasOAuthCredentials();
+    }
+
+    private boolean hasOAuthCredentials() {
+        return token != null && !token.isBlank()
+                && tokenSecret != null && !tokenSecret.isBlank()
+                && consumerKey != null && !consumerKey.isBlank()
+                && consumerSecret != null && !consumerSecret.isBlank();
     }
 
     public Optional<DiscogsProfile> fetchProfile() {
@@ -132,19 +163,44 @@ public class DiscogsApiClient {
             return false;
         }
         try {
-            String body = "release_id=" + releaseId + "&notes=" + DiscogsUrlUtils.urlEncode("Added via VinylMatch");
+            Map<String, String> formParams = java.util.Map.of(
+                    "release_id", String.valueOf(releaseId),
+                    "notes", "Added via VinylMatch"
+            );
+            String body = DiscogsOAuth1.toFormEncoded(formParams);
             URI uri = URI.create(apiBase + "/users/" + DiscogsUrlUtils.urlEncode(username) + "/wants");
-            HttpRequest req = baseRequest(uri)
+            HttpRequest req = baseRequest(uri, "POST", formParams)
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            return resp.statusCode() >= 200 && resp.statusCode() < 300;
+            int statusCode = resp.statusCode();
+            if (statusCode >= 200 && statusCode < 300) {
+                return true;
+            }
+            if (statusCode == 409) {
+                // Duplicate add on Discogs: the item is already in the wantlist.
+                return true;
+            }
+            if (statusCode >= 400 && statusCode < 500 && looksLikeDuplicateWantlist(resp.body())) {
+                return true;
+            }
+            log.debug("Discogs wantlist add rejected with status {}", statusCode);
+            return false;
         } catch (Exception e) {
             log.debug("Discogs wantlist add failed: {}", e.getMessage());
             return false;
         }
+    }
+
+    private static boolean looksLikeDuplicateWantlist(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return false;
+        }
+        String normalized = responseBody.toLowerCase();
+        return normalized.contains("already")
+                && (normalized.contains("wantlist") || normalized.contains("wants"));
     }
 
     public List<CurationCandidate> fetchCurationCandidates(String artist, String album, Integer releaseYear, String trackTitle, int limit)
@@ -217,7 +273,8 @@ public class DiscogsApiClient {
                 .GET()
                 .build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (resp.statusCode() != 200) {
+        if (!isSearchStatusSuccessful(resp.statusCode())) {
+            throwTransientIfNeeded(resp.statusCode());
             return Optional.empty();
         }
         JsonNode root = mapper.readTree(resp.body());
@@ -346,7 +403,8 @@ public class DiscogsApiClient {
                 .build();
 
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (resp.statusCode() != 200) {
+        if (!isSearchStatusSuccessful(resp.statusCode())) {
+            throwTransientIfNeeded(resp.statusCode());
             return Optional.empty();
         }
 
@@ -396,7 +454,8 @@ public class DiscogsApiClient {
                 .GET()
                 .build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (resp.statusCode() != 200) {
+        if (!isSearchStatusSuccessful(resp.statusCode())) {
+            throwTransientIfNeeded(resp.statusCode());
             return Optional.empty();
         }
 
@@ -457,10 +516,40 @@ public class DiscogsApiClient {
     }
 
     private HttpRequest.Builder baseRequest(URI uri) {
-        return HttpRequest.newBuilder(uri)
+        return baseRequest(uri, "GET", null);
+    }
+
+    private HttpRequest.Builder baseRequest(URI uri, String method, Map<String, String> formParams) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .header("Accept", "application/json")
-                .header("User-Agent", userAgent)
-                .header("Authorization", "Discogs token=" + token);
+                .header("User-Agent", userAgent);
+
+        if (hasOAuthCredentials()) {
+            Map<String, String> oauthParams = DiscogsOAuth1.newOAuthParameters(consumerKey, token);
+            String header = DiscogsOAuth1.buildAuthorizationHeader(
+                    method,
+                    uri,
+                    oauthParams,
+                    consumerSecret,
+                    tokenSecret,
+                    formParams
+            );
+            builder.header("Authorization", header);
+            return builder;
+        }
+
+        builder.header("Authorization", "Discogs token=" + token);
+        return builder;
+    }
+
+    private static boolean isSearchStatusSuccessful(int statusCode) {
+        return statusCode == 200;
+    }
+
+    private static void throwTransientIfNeeded(int statusCode) throws IOException {
+        if (statusCode == 429 || statusCode >= 500) {
+            throw new IOException("discogs_transient_status:" + statusCode);
+        }
     }
 
     private static String parseFormats(JsonNode formatsNode) {

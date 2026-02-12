@@ -40,6 +40,19 @@ class DiscogsApiClientTest {
         });
         server.createContext("/users/testuser/wants", ex -> {
             if ("POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                String requestBody = new String(ex.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                if (requestBody.contains("release_id=409")) {
+                    Json.respond(ex, 409, "{\"message\":\"Release already in wantlist.\"}");
+                    return;
+                }
+                if (requestBody.contains("release_id=422")) {
+                    Json.respond(ex, 422, "{\"message\":\"Item already exists in wants.\"}");
+                    return;
+                }
+                if (requestBody.contains("release_id=500")) {
+                    Json.respond(ex, 500, "{\"message\":\"temporary failure\"}");
+                    return;
+                }
                 Json.respond(ex, 201, "{}");
                 return;
             }
@@ -165,6 +178,21 @@ class DiscogsApiClientTest {
     }
 
     @Test
+    void addToWantlistTreatsConflictAsAlreadyPresent() {
+        assertTrue(client.addToWantlist("testuser", 409));
+    }
+
+    @Test
+    void addToWantlistTreatsDuplicateValidationErrorAsAlreadyPresent() {
+        assertTrue(client.addToWantlist("testuser", 422));
+    }
+
+    @Test
+    void addToWantlistReturnsFalseOnServerError() {
+        assertFalse(client.addToWantlist("testuser", 500));
+    }
+
+    @Test
     void fetchWishlistAndCollectionIdsWork() {
         Set<Integer> wants = client.fetchWishlistReleaseIds("testuser", 50);
         Set<Integer> collection = client.fetchCollectionReleaseIds("testuser", 50);
@@ -196,4 +224,3 @@ class DiscogsApiClientTest {
         }
     }
 }
-

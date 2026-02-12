@@ -44,7 +44,15 @@ public class StaticFileHandler implements HttpHandler {
             }
 
             String rawPath = exchange.getRequestURI().getPath();
-            String requested = rawPath.equals("/") ? defaultFile : rawPath.substring(1);
+            String normalizedPath = (rawPath.endsWith("/") && rawPath.length() > 1)
+                ? rawPath.substring(0, rawPath.length() - 1)
+                : rawPath;
+            String requested;
+            if (normalizedPath.equals("/")) {
+                requested = defaultFile;
+            } else {
+                requested = rawPath.substring(1);
+            }
 
             // Log generated links when playlist page is requested with id
             if ("playlist.html".equals(requested)) {

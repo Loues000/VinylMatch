@@ -55,6 +55,12 @@ class SpotifyOAuthServiceTest {
         assertFalse(svc.refreshAccessToken(session));
     }
 
+    @Test
+    void clientCredentialsTokenReturnsEmptyWhenNotConfigured() {
+        SpotifyOAuthService svc = new SpotifyOAuthService(null, null, null);
+        assertTrue(svc.getClientCredentialsAccessToken().isEmpty());
+    }
+
     private static Map<String, String> parseQuery(URI uri) {
         String q = uri.getRawQuery();
         if (q == null || q.isBlank()) return Map.of();

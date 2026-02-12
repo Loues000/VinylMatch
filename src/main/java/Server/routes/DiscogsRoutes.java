@@ -1,10 +1,15 @@
 package Server.routes;
 
+import Server.auth.DiscogsOAuthService;
 import Server.http.HttpUtils;
 import Server.http.ApiFilters;
+import Server.http.filters.AdminOnlyFilter;
 import Server.session.DiscogsSession;
 import Server.session.DiscogsSessionStore;
+import Server.session.SpotifySessionStore;
 import com.hctamlyniv.DiscogsService;
+import com.hctamlyniv.curation.CuratedLinkStore;
+import com.hctamlyniv.curation.RedisCuratedLinkStore;
 import com.hctamlyniv.discogs.model.CurationCandidate;
 import com.hctamlyniv.discogs.model.CuratedLink;
 import com.hctamlyniv.discogs.model.DiscogsProfile;
@@ -16,6 +21,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,24 +43,60 @@ public class DiscogsRoutes {
 
     private final Supplier<DiscogsService> defaultDiscogsSupplier;
     private final DiscogsSessionStore sessionStore;
+    private final SpotifySessionStore spotifySessionStore;
+    private final DiscogsOAuthService oauthService;
+    private final CuratedLinkStore curatedLinkStore;
     private final Map<String, DiscogsService> serviceCache = new ConcurrentHashMap<>();
 
-    public DiscogsRoutes(Supplier<DiscogsService> defaultDiscogsSupplier, DiscogsSessionStore sessionStore) {
+    public DiscogsRoutes(Supplier<DiscogsService> defaultDiscogsSupplier, DiscogsSessionStore sessionStore, SpotifySessionStore spotifySessionStore) {
         this.defaultDiscogsSupplier = defaultDiscogsSupplier;
         this.sessionStore = sessionStore;
+        this.spotifySessionStore = spotifySessionStore;
+        this.oauthService = new DiscogsOAuthService();
+        this.curatedLinkStore = new RedisCuratedLinkStore(new com.fasterxml.jackson.databind.ObjectMapper());
     }
 
     public void register(HttpServer server) {
-        server.createContext("/api/discogs/batch", this::handleBatch).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/discogs/search", this::handleSearch).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/discogs/status", this::handleStatus).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/discogs/login", this::handleLogin).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/discogs/logout", this::handleLogout).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/discogs/wishlist/add", this::handleWishlistAdd).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/discogs/wishlist", this::handleWishlist).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/discogs/library-status", this::handleLibraryStatus).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/discogs/curation/candidates", this::handleCurationCandidates).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/discogs/curation/save", this::handleCurationSave).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/discogs/batch", this::handleBatch).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/search", this::handleSearch).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/status", this::handleStatus).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/login", this::handleLogin).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/oauth/status", this::handleOAuthStatus).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/oauth/start", this::handleOAuthStart).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/oauth/callback", this::handleOAuthCallback).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/logout", this::handleLogout).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/wishlist/add", this::handleWishlistAdd).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/wishlist", this::handleWishlist).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/discogs/library-status", this::handleLibraryStatus).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        AdminOnlyFilter adminFilter = new AdminOnlyFilter(spotifySessionStore);
+        server.createContext("/api/discogs/curation/candidates", this::handleCurationCandidates).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting(), adminFilter)
+        );
+        server.createContext("/api/discogs/curation/save", this::handleCurationSave).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting(), adminFilter)
+        );
     }
 
     // =========================================================================
@@ -101,10 +146,10 @@ public class DiscogsRoutes {
                 }
 
                 Optional<String> cached = discogs.peekCachedUri(artist, album, year, barcode);
-                boolean cacheHit = cached.isPresent();
-                Optional<String> urlOpt = cached.isPresent()
-                        ? cached
-                        : discogs.findAlbumUri(artist, album, year, trackTitle, barcode);
+                Optional<String> urlOpt = discogs.findAlbumUri(artist, album, year, trackTitle, barcode);
+                boolean cacheHit = cached.isPresent()
+                        && urlOpt.isPresent()
+                        && cached.get().equals(urlOpt.get());
 
                 resultEntry.put("cacheHit", cacheHit);
                 resultEntry.put("url", urlOpt.orElse(null));
@@ -172,6 +217,8 @@ public class DiscogsRoutes {
             DiscogsSession session = sessionStore.getSession(exchange);
             Map<String, Object> payload = new HashMap<>();
             payload.put("loggedIn", session != null && session.username() != null);
+            payload.put("oauthConfigured", oauthService.isConfigured());
+            payload.put("oauthSession", session != null && session.oauthSession());
             if (session != null) {
                 payload.put("username", session.username());
                 payload.put("name", session.displayName());
@@ -194,8 +241,9 @@ public class DiscogsRoutes {
             String body = HttpUtils.readRequestBody(exchange);
             Map<?, ?> payload = HttpUtils.getMapper().readValue(body, Map.class);
             String token = HttpUtils.stringValue(payload.get("token"));
-            Object userAgentObj = payload.get("userAgent");
-            String userAgent = userAgentObj != null ? HttpUtils.stringValue(userAgentObj) : com.hctamlyniv.Config.getDiscogsUserAgent();
+            
+            // Security: User-Agent is fixed to configured value, not client-controlled
+            String userAgent = com.hctamlyniv.Config.getDiscogsUserAgent();
 
             if (token == null || token.isBlank()) {
                 HttpUtils.sendApiError(exchange, 400, "missing_discogs_token", "Discogs user token is required");
@@ -203,7 +251,7 @@ public class DiscogsRoutes {
             }
 
             String ua = (userAgent == null || userAgent.isBlank()) ? "VinylMatch/1.0" : userAgent;
-            DiscogsService service = getOrCreateService(token, ua);
+            DiscogsService service = getOrCreateService(token, null, ua);
             DiscogsProfile profile = service.fetchProfile().orElse(null);
             if (profile == null || profile.username() == null) {
                 HttpUtils.sendApiError(exchange, 401, "discogs_login_failed", "Discogs token invalid or access denied");
@@ -218,6 +266,103 @@ public class DiscogsRoutes {
         } catch (Exception e) {
             log.warn("Discogs login failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_login_failed", "Discogs login failed");
+        }
+    }
+
+    private void handleOAuthStatus(HttpExchange exchange) throws IOException {
+        try {
+            HttpUtils.addCorsHeaders(exchange);
+            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only GET is supported");
+                return;
+            }
+            HttpUtils.sendJson(exchange, 200, Map.of("configured", oauthService.isConfigured()));
+        } catch (Exception e) {
+            log.warn("Discogs OAuth status failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_oauth_status_failed", "Failed to read Discogs OAuth status");
+        }
+    }
+
+    private void handleOAuthStart(HttpExchange exchange) throws IOException {
+        try {
+            if (HttpUtils.handleCorsPreflightIfNeeded(exchange)) return;
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                HttpUtils.sendApiError(exchange, 405, "method_not_allowed", "Only POST is supported");
+                return;
+            }
+            if (!oauthService.isConfigured()) {
+                HttpUtils.sendApiError(exchange, 503, "discogs_oauth_not_configured", "Discogs OAuth is not configured");
+                return;
+            }
+
+            URI redirectOverride = oauthService.isRedirectUriExplicit() ? null : deriveLoopbackDiscogsCallback(exchange);
+            Optional<String> authorizeUrl = oauthService.buildAuthorizationUrl(redirectOverride);
+            if (authorizeUrl.isEmpty()) {
+                HttpUtils.sendApiError(exchange, 500, "discogs_oauth_start_failed", "Failed to start Discogs OAuth");
+                return;
+            }
+            HttpUtils.sendJson(exchange, 200, Map.of("authorizeUrl", authorizeUrl.get()));
+        } catch (Exception e) {
+            log.warn("Discogs OAuth start failed: {}", e.getMessage());
+            HttpUtils.sendApiError(exchange, 500, "discogs_oauth_start_failed", "Failed to start Discogs OAuth");
+        }
+    }
+
+    private void handleOAuthCallback(HttpExchange exchange) throws IOException {
+        try {
+            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                HttpUtils.sendText(exchange, 405, "Only GET is supported");
+                return;
+            }
+
+            Map<String, String> params = HttpUtils.parseQueryParams(exchange.getRequestURI().getRawQuery());
+            String error = params.get("error");
+            if (error != null && !error.isBlank()) {
+                sendOAuthCallbackHtml(exchange, false, "Discogs authorization denied: " + error);
+                return;
+            }
+
+            String requestToken = params.get("oauth_token");
+            String verifier = params.get("oauth_verifier");
+            String state = params.get("state");
+            if (requestToken == null || requestToken.isBlank() || verifier == null || verifier.isBlank() || state == null || state.isBlank()) {
+                sendOAuthCallbackHtml(exchange, false, "Missing OAuth callback parameters.");
+                return;
+            }
+
+            Optional<DiscogsOAuthService.AccessTokenResponse> access = oauthService.exchangeAccessToken(requestToken, verifier, state);
+            if (access.isEmpty()) {
+                sendOAuthCallbackHtml(exchange, false, "Discogs OAuth token exchange failed.");
+                return;
+            }
+
+            String userAgent = com.hctamlyniv.Config.getDiscogsUserAgent();
+            String ua = (userAgent == null || userAgent.isBlank()) ? "VinylMatch/1.0" : userAgent;
+            DiscogsOAuthService.AccessTokenResponse tokenResponse = access.get();
+            DiscogsService service = getOrCreateService(tokenResponse.token(), tokenResponse.tokenSecret(), ua);
+            if (service == null) {
+                sendOAuthCallbackHtml(exchange, false, "Discogs OAuth service initialization failed.");
+                return;
+            }
+
+            DiscogsProfile profile = service.fetchProfile().orElse(null);
+            if (profile == null || profile.username() == null) {
+                sendOAuthCallbackHtml(exchange, false, "Discogs profile lookup failed after OAuth.");
+                return;
+            }
+
+            sessionStore.createSession(
+                    exchange,
+                    tokenResponse.token(),
+                    tokenResponse.tokenSecret(),
+                    ua,
+                    profile.username(),
+                    profile.name()
+            );
+            sendOAuthCallbackHtml(exchange, true, "Discogs connected successfully.");
+        } catch (Exception e) {
+            log.warn("Discogs OAuth callback failed: {}", e.getMessage());
+            sendOAuthCallbackHtml(exchange, false, "Discogs OAuth callback failed.");
         }
     }
 
@@ -256,6 +401,7 @@ public class DiscogsRoutes {
             }
 
             int limit = 12;
+            int page = 1;
             Map<String, String> params = HttpUtils.parseQueryParams(exchange.getRequestURI().getRawQuery());
             if (params.containsKey("limit")) {
                 try {
@@ -263,10 +409,24 @@ public class DiscogsRoutes {
                     if (parsed > 0 && parsed <= 50) limit = parsed;
                 } catch (NumberFormatException ignored) {}
             }
+            if (params.containsKey("page")) {
+                try {
+                    int parsed = Integer.parseInt(params.get("page"));
+                    if (parsed > 0 && parsed <= 500) page = parsed;
+                } catch (NumberFormatException ignored) {}
+            }
 
-            DiscogsService service = getOrCreateService(session.token(), session.userAgent());
-            WishlistResult wishlist = service.fetchWishlist(session.username(), 1, limit);
-            HttpUtils.sendJson(exchange, 200, wishlist);
+            DiscogsService service = getOrCreateService(session.token(), session.tokenSecret(), session.userAgent());
+            WishlistResult wishlist = service.fetchWishlist(session.username(), page, limit);
+            int total = Math.max(0, wishlist.total());
+            boolean hasMore = page * limit < total;
+            HttpUtils.sendJson(exchange, 200, Map.of(
+                    "items", wishlist.items(),
+                    "total", total,
+                    "page", page,
+                    "limit", limit,
+                    "hasMore", hasMore
+            ));
         } catch (Exception e) {
             log.warn("Discogs wishlist failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_wishlist_failed", "Failed to load Discogs wishlist");
@@ -295,7 +455,7 @@ public class DiscogsRoutes {
                 return;
             }
 
-            DiscogsService service = getOrCreateService(session.token(), session.userAgent());
+            DiscogsService service = getOrCreateService(session.token(), session.tokenSecret(), session.userAgent());
             Integer releaseId = service.resolveReleaseIdFromUrl(url).orElse(null);
             if (releaseId == null) {
                 HttpUtils.sendApiError(exchange, 422, "invalid_url", "Could not resolve release ID from URL");
@@ -303,8 +463,12 @@ public class DiscogsRoutes {
             }
 
             boolean added = service.addToWantlist(session.username(), releaseId);
-            HttpUtils.sendJson(exchange, added ? 200 : 409, Map.of(
-                    "added", added,
+            if (!added) {
+                HttpUtils.sendApiError(exchange, 502, "discogs_wantlist_add_failed", "Discogs rejected the add request");
+                return;
+            }
+            HttpUtils.sendJson(exchange, 200, Map.of(
+                    "added", true,
                     "releaseId", releaseId
             ));
         } catch (Exception e) {
@@ -350,7 +514,7 @@ public class DiscogsRoutes {
                 return;
             }
 
-            DiscogsService service = getOrCreateService(session.token(), session.userAgent());
+            DiscogsService service = getOrCreateService(session.token(), session.tokenSecret(), session.userAgent());
             Map<String, Integer> resolved = new HashMap<>();
             for (String url : urls) {
                 service.resolveReleaseIdFromUrl(url).ifPresent(id -> resolved.put(url, id));
@@ -434,18 +598,32 @@ public class DiscogsRoutes {
             String thumb = HttpUtils.stringValue(payload.get("thumb"));
 
             if (!HttpUtils.isDiscogsWebUrl(url)) {
-                HttpUtils.sendApiError(exchange, 400, "invalid_url", "Parameter 'url' is required");
+                HttpUtils.sendApiError(exchange, 400, "invalid_url", "Parameter 'url' is required and must be a valid Discogs URL");
                 return;
             }
 
-            DiscogsService discogs = defaultDiscogsSupplier.get();
-            if (discogs == null) {
-                HttpUtils.sendApiError(exchange, 503, "discogs_not_configured", "Discogs token not configured");
-                return;
-            }
-
-            CuratedLink saved = discogs.saveCuratedLink(artist, album, year, trackTitle, barcode, url, thumb);
-            HttpUtils.sendJson(exchange, 200, Map.of("saved", true, "entry", saved));
+            String safeUrl = com.hctamlyniv.discogs.DiscogsUrlUtils.sanitizeDiscogsWebUrl(url);
+            String safeThumb = com.hctamlyniv.discogs.DiscogsUrlUtils.sanitizeDiscogsWebUrl(thumb);
+            
+            String normalizedKey = CuratedLinkStore.normalizeKey(artist, album, year);
+            
+            CuratedLink link = new CuratedLink(
+                normalizedKey,
+                artist,
+                album,
+                year,
+                trackTitle,
+                barcode,
+                safeUrl,
+                safeThumb,
+                java.time.Instant.now().toString(),
+                "manual"
+            );
+            
+            curatedLinkStore.save(link);
+            
+            log.info("Saved curated link: {} -> {}", normalizedKey, safeUrl);
+            HttpUtils.sendJson(exchange, 200, Map.of("saved", true, "cacheKey", normalizedKey, "entry", link));
         } catch (Exception e) {
             log.warn("Discogs curation save failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_curation_save_failed", "Failed to save curated link");
@@ -459,7 +637,7 @@ public class DiscogsRoutes {
     private DiscogsService resolveDiscogsService(HttpExchange exchange) {
         DiscogsSession session = sessionStore.getSession(exchange);
         if (session != null && session.token() != null && !session.token().isBlank()) {
-            DiscogsService fromSession = getOrCreateService(session.token(), session.userAgent());
+            DiscogsService fromSession = getOrCreateService(session.token(), session.tokenSecret(), session.userAgent());
             if (fromSession != null) {
                 return fromSession;
             }
@@ -468,13 +646,128 @@ public class DiscogsRoutes {
         return fallback != null ? fallback : new DiscogsService(null, "VinylMatch/1.0");
     }
 
-    private DiscogsService getOrCreateService(String token, String userAgent) {
+    private DiscogsService getOrCreateService(String token, String tokenSecret, String userAgent) {
         if (token == null || token.isBlank()) {
             return null;
         }
         String ua = (userAgent == null || userAgent.isBlank()) ? "VinylMatch/1.0" : userAgent;
-        String key = token + "|" + ua;
-        return serviceCache.computeIfAbsent(key, k -> new DiscogsService(token, ua));
+        String secretKey = (tokenSecret == null || tokenSecret.isBlank()) ? "" : tokenSecret;
+        String key = token + "|" + secretKey + "|" + ua;
+        if (secretKey.isBlank()) {
+            return serviceCache.computeIfAbsent(key, k -> new DiscogsService(token, ua));
+        }
+        return serviceCache.computeIfAbsent(key, k -> new DiscogsService(
+                token,
+                secretKey,
+                ua,
+                com.hctamlyniv.Config.getDiscogsConsumerKey(),
+                com.hctamlyniv.Config.getDiscogsConsumerSecret()
+        ));
+    }
+
+    private static URI deriveLoopbackDiscogsCallback(HttpExchange exchange) {
+        if (exchange == null) return null;
+        String hostHeader = exchange.getRequestHeaders().getFirst("Host");
+        if (hostHeader == null || hostHeader.isBlank()) return null;
+
+        String scheme = HttpUtils.isSecureRequest(exchange) ? "https" : "http";
+        URI base;
+        try {
+            base = URI.create(scheme + "://" + hostHeader.trim());
+        } catch (Exception e) {
+            return null;
+        }
+
+        String host = base.getHost();
+        if (host == null || host.isBlank()) return null;
+        String lowerHost = host.toLowerCase();
+        boolean isLoopback = lowerHost.equals("localhost") || lowerHost.equals("127.0.0.1") || lowerHost.equals("::1");
+        if (!isLoopback) return null;
+
+        int port = base.getPort();
+        if (port <= 0) {
+            try {
+                port = exchange.getLocalAddress().getPort();
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+
+        try {
+            String canonicalHost = lowerHost.equals("::1") ? "::1" : "127.0.0.1";
+            return new URI(scheme, null, canonicalHost, port, "/api/discogs/oauth/callback", null, null);
+        } catch (URISyntaxException e) {
+            return null;
+        }
+    }
+
+    private void sendOAuthCallbackHtml(HttpExchange exchange, boolean success, String message) throws IOException {
+        String status = success ? "Discogs Login Successful" : "Discogs Login Failed";
+        String color = success ? "#1f7a3f" : "#b23333";
+        String action = success ? "Closing window..." : "You can close this window.";
+        String script = success ? """
+                if (window.opener) {
+                    window.opener.postMessage({ type: 'discogs-auth-callback', success: true }, '*');
+                    setTimeout(function () { window.close(); }, 600);
+                } else {
+                    setTimeout(function () { window.location.href = '/playlist.html'; }, 1200);
+                }
+                """ : """
+                if (window.opener) {
+                    window.opener.postMessage({ type: 'discogs-auth-callback', success: false, message: %s }, '*');
+                }
+                """.formatted(toJsStringLiteral(message));
+
+        String html = """
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>%s</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; background: #f5f2eb; margin: 0; min-height: 100vh; display: grid; place-items: center; }
+                        .card { width: min(440px, 92vw); background: #fff; border: 2px solid #111; padding: 28px; }
+                        h1 { margin: 0 0 10px; font-size: 24px; color: %s; }
+                        p { margin: 8px 0; color: #1b1b1b; line-height: 1.5; }
+                        .muted { color: #555; font-size: 14px; }
+                    </style>
+                </head>
+                <body>
+                    <main class="card">
+                        <h1>%s</h1>
+                        <p>%s</p>
+                        <p class="muted">%s</p>
+                    </main>
+                    <script>%s</script>
+                </body>
+                </html>
+                """.formatted(
+                status,
+                color,
+                status,
+                message == null ? "" : message,
+                action,
+                script
+        );
+
+        byte[] body = html.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+        exchange.sendResponseHeaders(200, body.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(body);
+        }
+    }
+
+    private static String toJsStringLiteral(String value) {
+        if (value == null) {
+            return "\"\"";
+        }
+        return "\"" + value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r", "\\r")
+                .replace("\n", "\\n") + "\"";
     }
 
     private Integer parseYear(Object value) {

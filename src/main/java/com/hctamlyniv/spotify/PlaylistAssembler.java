@@ -3,6 +3,7 @@ package com.hctamlyniv.spotify;
 import Server.PlaylistData;
 import Server.TrackData;
 import com.hctamlyniv.DiscogsService;
+import com.hctamlyniv.discogs.DiscogsNormalizer;
 import se.michaelthelin.spotify.model_objects.specification.Album;
 import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
 import se.michaelthelin.spotify.model_objects.specification.Episode;
@@ -135,10 +136,12 @@ public class PlaylistAssembler {
         // Barcode
         String barcode = barcodeExtractor.getOrExtractBarcode(albumId, albumDetails);
 
-        // Discogs URL (from cache only, no API call)
+        // Discogs URL (from cache only, no API call) - normalize to match frontend's normalization
         String discogsUrl = null;
         if (discogsService != null) {
-            discogsUrl = discogsService.peekCachedUri(artistName, albumName, releaseYear, barcode)
+            String normalizedArtist = DiscogsNormalizer.extractPrimaryArtist(artistName);
+            String normalizedAlbum = DiscogsNormalizer.normalizeForCacheKey(albumName);
+            discogsUrl = discogsService.peekCachedUri(normalizedArtist, normalizedAlbum, releaseYear, barcode)
                     .orElse(null);
         }
 

@@ -31,6 +31,11 @@ public final class DiscogsNormalizer {
         };
     }
 
+    public static String normalizeForCacheKey(String title) {
+        if (title == null) return null;
+        return removeMarketingSuffixes(removeBracketedContent(title.replace("&", "and"))).trim();
+    }
+
     public static String normalizeArtistLevel(String artist, NormLevel level) {
         if (artist == null) return null;
         String a = extractPrimaryArtist(artist);

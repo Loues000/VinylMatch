@@ -2,11 +2,14 @@ package Server;
 
 import Server.auth.SpotifyOAuthService;
 import Server.cache.PlaylistCache;
+import Server.http.ApiFilters;
 import Server.http.HttpUtils;
 import Server.http.StaticFileHandler;
+import Server.routes.AlbumRoutes;
 import Server.routes.AuthRoutes;
 import Server.routes.ConfigRoutes;
 import Server.routes.DiscogsRoutes;
+import Server.routes.HealthRoutes;
 import Server.routes.PlaylistRoutes;
 import Server.session.DiscogsSessionStore;
 import Server.session.SpotifySessionStore;
@@ -55,16 +58,24 @@ public class ApiServer {
         PlaylistRoutes playlistRoutes = new PlaylistRoutes(playlistCache, ApiServer::getDefaultDiscogsService, authRoutes);
         playlistRoutes.register(server);
 
-        DiscogsRoutes discogsRoutes = new DiscogsRoutes(ApiServer::getDefaultDiscogsService, discogsSessionStore);
+        DiscogsRoutes discogsRoutes = new DiscogsRoutes(ApiServer::getDefaultDiscogsService, discogsSessionStore, spotifySessionStore);
         discogsRoutes.register(server);
 
         ConfigRoutes configRoutes = new ConfigRoutes();
         configRoutes.register(server);
 
+        // Register album routes
+        AlbumRoutes albumRoutes = new AlbumRoutes();
+        albumRoutes.register(server);
+
+        // Register health check endpoints
+        HealthRoutes healthRoutes = new HealthRoutes();
+        healthRoutes.register(server);
+
         // Serve static frontend files
         Path frontendBase = resolveFrontendBase();
         StaticFileHandler staticHandler = new StaticFileHandler(frontendBase, "home.html", actualPort, spotifyOAuthService.getRedirectUri());
-        server.createContext("/", staticHandler);
+        server.createContext("/", staticHandler).getFilters().add(ApiFilters.securityHeaders());
 
         // Start server
         server.setExecutor(Executors.newFixedThreadPool(5));

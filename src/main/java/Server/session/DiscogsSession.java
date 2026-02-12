@@ -6,7 +6,12 @@ package Server.session;
 public record DiscogsSession(
     String sessionId,
     String token,
+    String tokenSecret,
     String userAgent,
     String username,
     String displayName
-) {}
+) {
+    public boolean oauthSession() {
+        return tokenSecret != null && !tokenSecret.isBlank();
+    }
+}

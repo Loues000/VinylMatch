@@ -48,10 +48,21 @@ public final class Config {
             "SPOTIFY_REDIRECT_URI",
             "DISCOGS_TOKEN",
             "DISCOGS_USER_AGENT",
+            "DISCOGS_CONSUMER_KEY",
+            "DISCOGS_CONSUMER_SECRET",
+            "DISCOGS_REDIRECT_URI",
             "PUBLIC_BASE_URL",
             "PORT",
             "CORS_ALLOWED_ORIGINS",
-            "VINYLMATCH_CONFIG"
+            "VINYLMATCH_CONFIG",
+            "REDIS_HOST",
+            "REDIS_PORT",
+            "REDIS_PASSWORD",
+            "SESSION_TTL_DAYS",
+            "LOG_LEVEL",
+            "SENTRY_DSN",
+            "ENVIRONMENT",
+            "ADMIN_USER_IDS"
     );
 
     // Cache resolved values to avoid repeated IO/env lookups
@@ -223,6 +234,18 @@ public final class Config {
         return get("DISCOGS_USER_AGENT");
     }
 
+    public static String getDiscogsConsumerKey() {
+        return get("DISCOGS_CONSUMER_KEY");
+    }
+
+    public static String getDiscogsConsumerSecret() {
+        return get("DISCOGS_CONSUMER_SECRET");
+    }
+
+    public static String getDiscogsRedirectUri() {
+        return get("DISCOGS_REDIRECT_URI");
+    }
+
     // =========================================================================
     // Server Configuration
     // =========================================================================
@@ -245,6 +268,75 @@ public final class Config {
 
     public static String getCorsAllowedOrigins() {
         return get("CORS_ALLOWED_ORIGINS");
+    }
+
+    // =========================================================================
+    // Redis Configuration
+    // =========================================================================
+
+    public static String getRedisHost() {
+        return get("REDIS_HOST");
+    }
+
+    public static int getRedisPort() {
+        String port = get("REDIS_PORT");
+        if (port == null || port.isBlank()) {
+            return 6379;
+        }
+        try {
+            return Integer.parseInt(port);
+        } catch (NumberFormatException e) {
+            return 6379;
+        }
+    }
+
+    public static String getRedisPassword() {
+        return get("REDIS_PASSWORD");
+    }
+
+    // =========================================================================
+    // Session Configuration
+    // =========================================================================
+
+    public static int getSessionTtlDays() {
+        String days = get("SESSION_TTL_DAYS");
+        if (days == null || days.isBlank()) {
+            return 30;
+        }
+        try {
+            return Integer.parseInt(days);
+        } catch (NumberFormatException e) {
+            return 30;
+        }
+    }
+
+    // =========================================================================
+    // Logging & Monitoring
+    // =========================================================================
+
+    public static String getLogLevel() {
+        String level = get("LOG_LEVEL");
+        return level != null && !level.isBlank() ? level : "INFO";
+    }
+
+    public static String getSentryDsn() {
+        return get("SENTRY_DSN");
+    }
+
+    public static String getEnvironment() {
+        String env = get("ENVIRONMENT");
+        return env != null && !env.isBlank() ? env : "development";
+    }
+
+    public static java.util.Set<String> getAdminUserIds() {
+        String value = get("ADMIN_USER_IDS");
+        if (value == null || value.isBlank()) {
+            return java.util.Collections.emptySet();
+        }
+        return java.util.Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     // =========================================================================
@@ -275,6 +367,9 @@ public final class Config {
         log.info("  SPOTIFY_REDIRECT_URI: {}", (getSpotifyRedirectUri() != null ? getSpotifyRedirectUri() : "[using default]"));
         log.info("  DISCOGS_TOKEN: {}", (getDiscogsToken() != null ? "[set]" : "[not set - recommended]"));
         log.info("  DISCOGS_USER_AGENT: {}", (getDiscogsUserAgent() != null ? getDiscogsUserAgent() : "[using default]"));
+        log.info("  DISCOGS_CONSUMER_KEY: {}", (getDiscogsConsumerKey() != null ? "[set]" : "[not set]"));
+        log.info("  DISCOGS_CONSUMER_SECRET: {}", (getDiscogsConsumerSecret() != null ? "[set]" : "[not set]"));
+        log.info("  DISCOGS_REDIRECT_URI: {}", (getDiscogsRedirectUri() != null ? getDiscogsRedirectUri() : "[using default]"));
         log.info("  PUBLIC_BASE_URL: {}", (getPublicBaseUrl() != null ? getPublicBaseUrl() : "[not set]"));
         log.info("  PORT: {}", getPort());
 

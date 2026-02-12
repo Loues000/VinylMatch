@@ -26,7 +26,9 @@ public class ConfigRoutes {
     private static final Logger log = LoggerFactory.getLogger(ConfigRoutes.class);
 
     public void register(HttpServer server) {
-        server.createContext("/api/config/vendors", this::handleGetVendors).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/config/vendors", this::handleGetVendors).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
     }
 
     /**

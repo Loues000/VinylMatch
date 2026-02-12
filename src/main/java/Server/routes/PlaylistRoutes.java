@@ -42,8 +42,12 @@ public class PlaylistRoutes {
     }
 
     public void register(HttpServer server) {
-        server.createContext("/api/playlist", this::handleGetPlaylist).getFilters().add(ApiFilters.rateLimiting());
-        server.createContext("/api/user/playlists", this::handleGetUserPlaylists).getFilters().add(ApiFilters.rateLimiting());
+        server.createContext("/api/playlist", this::handleGetPlaylist).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
+        server.createContext("/api/user/playlists", this::handleGetUserPlaylists).getFilters().addAll(
+            java.util.List.of(ApiFilters.securityHeaders(), ApiFilters.rateLimiting())
+        );
     }
 
     private void handleGetPlaylist(HttpExchange exchange) throws IOException {
@@ -96,12 +100,14 @@ public class PlaylistRoutes {
             String limitLog = (limit > 0) ? String.valueOf(limit) : "all";
             log.info("GET /api/playlist id={} offset={} limit={}", id, offset, limitLog);
 
-            // Get token using session-aware auth
-            String token = authRoutes.getAccessToken(exchange);
+            // Resolve best available token (user token first, app token fallback for public playlists)
+            AuthRoutes.AccessTokenResolution tokenResolution = authRoutes.resolvePlaylistAccessToken(exchange);
+            String token = tokenResolution.token();
             if (token == null || token.isBlank()) {
                 HttpUtils.sendApiError(exchange, 401, "spotify_login_required", "Spotify login required");
                 return;
             }
+            boolean userAuthenticated = tokenResolution.userAuthenticated();
 
             String userSignature = authRoutes.getUserSignature(exchange);
             playlistCache.invalidateForAuthChange(userSignature);
@@ -114,6 +120,11 @@ public class PlaylistRoutes {
                 playlistData = rd.loadPlaylistData(offset, limit);
                 if (playlistData == null) {
                     playlistCache.remove(cacheKey);
+                    if (!userAuthenticated) {
+                        HttpUtils.sendApiError(exchange, 401, "spotify_login_required",
+                                "Playlist unavailable without Spotify login (private or collaborative)");
+                        return;
+                    }
                     HttpUtils.sendApiError(exchange, 500, "playlist_load_failed", "Failed to load playlist data");
                     return;
                 }
