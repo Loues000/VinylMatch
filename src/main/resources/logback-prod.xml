@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Import JSON encoder for structured logging -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeContext>false</includeContext>
+            <includeMdc>true</includeMdc>
+            <customFields>{"service":"vinylmatch","environment":"${ENVIRONMENT:-production}"}</customFields>
+        </encoder>
+    </appender>
+
+    <!-- File appender with JSON format for centralized log aggregation -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/vinylmatch.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/vinylmatch.%d{yyyy-MM-dd}.%i.log.json</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <maxFileSize>10MB</maxFileSize>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeContext>false</includeContext>
+            <includeMdc>true</includeMdc>
+            <customFields>{"service":"vinylmatch","environment":"${ENVIRONMENT:-production}"}</customFields>
+        </encoder>
+    </appender>
+
+    <!-- Root logger configuration -->
+    <root level="${LOG_LEVEL:-INFO}">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE" />
+    </root>
+
+    <!-- Reduce noise from third-party libraries -->
+    <logger name="se.michaelthelin.spotify" level="WARN" />
+    <logger name="org.apache.http" level="WARN" />
+    <logger name="redis.clients.jedis" level="INFO" />
+</configuration>

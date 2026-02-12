@@ -1,5 +1,11 @@
 # VinylMatch
 
+[![CI](https://github.com/hctamlyniv/VinylMatch/actions/workflows/ci.yml/badge.svg)](https://github.com/hctamlyniv/VinylMatch/actions/workflows/ci.yml)
+[![Deploy](https://github.com/hctamlyniv/VinylMatch/actions/workflows/deploy.yml/badge.svg)](https://github.com/hctamlyniv/VinylMatch/actions/workflows/deploy.yml)
+[![Coverage](https://img.shields.io/badge/coverage-70%25-brightgreen.svg)](./pom.xml)
+[![Java 21](https://img.shields.io/badge/Java-21-blue.svg)](https://openjdk.org/projects/jdk/21/)
+[![Runtime](https://img.shields.io/badge/runtime-java--jar-success.svg)](./pom.xml)
+
 VinylMatch is a lightweight web app + API that matches Spotify playlist tracks to their corresponding vinyl releases on Discogs (and optionally links out to other vinyl webstores).
 
 It's built for collectors, DJs, archivists, and anyone who wants to connect a digital playlist to physical releases without manually searching every record.
@@ -88,13 +94,19 @@ Open `http://localhost:8888/`.
 
 VinylMatch is designed to run as a hosted multi-user app:
 
-- Users authenticate via Spotify OAuth
-- Sessions are stored in memory and identified by secure HTTP cookies
-- If you run behind a reverse proxy, forward `X-Forwarded-Proto` so secure cookies work correctly
+- Build and ship `target/VinylMatch.jar`
+- Run under `systemd` (or similar process manager)
+- Store runtime config only in environment variables
+- Use Redis for persistent sessions in staging/production
 
 ### Configuration (Environment Variables)
 
 See `config/env.example` for a complete template.
+
+Security note:
+- Never paste real credentials into docs or scripts.
+- If credentials were ever exposed in plaintext, revoke/rotate them in Spotify/Discogs dashboards immediately.
+- You can run `./scripts/check-doc-secrets.ps1` to scan markdown docs for secret-like values.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -119,44 +131,6 @@ See `config/env.example` for a complete template.
 3. Set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`
 
 Note: Spotify does not allow `localhost` as a redirect URI. Use `127.0.0.1` (or `[::1]`) and open the app via that same host.
-
-### Docker
-
-```bash
-docker build -t vinylmatch .
-docker run -d \
-  --name vinylmatch \
-  -p 8888:8888 \
-  -e SPOTIFY_CLIENT_ID=your_client_id \
-  -e SPOTIFY_CLIENT_SECRET=your_client_secret \
-  -e PUBLIC_BASE_URL=https://your-domain.com \
-  -e DISCOGS_TOKEN=your_discogs_token \
-  -e DISCOGS_USER_AGENT="VinylMatch/1.0 (+your_email)" \
-  -v vinylmatch-cache:/app/cache \
-  vinylmatch
-```
-
-### Docker Compose (example)
-
-```yaml
-version: '3.8'
-services:
-  vinylmatch:
-    build: .
-    ports:
-      - "8888:8888"
-    environment:
-      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
-      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
-      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
-      - DISCOGS_TOKEN=${DISCOGS_TOKEN}
-      - DISCOGS_USER_AGENT=VinylMatch/1.0
-    volumes:
-      - vinylmatch-cache:/app/cache
-    restart: unless-stopped
-volumes:
-  vinylmatch-cache:
-```
 
 ## Custom Vendor Links
 

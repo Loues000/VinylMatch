@@ -1,35 +1,39 @@
+# Maven build output
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+# Build/Dependency
+node_modules/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
 ### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
 .idea/modules.xml
 .idea/jarRepositories.xml
 .idea/compiler.xml
 .idea/libraries/
-*.iws
-*.iml
-*.ipr
 
 ### Eclipse ###
-.apt_generated
 .classpath
-.factorypath
 .project
-.settings
+.settings/
+.apt_generated
+.factorypath
 .springBeans
 .sts4-cache
 
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
-/dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
 ### VS Code ###
 .vscode/
@@ -37,33 +41,42 @@ build/
 ### Mac OS ###
 .DS_Store
 
+### Windows ###
+Thumbs.db
+desktop.ini
+
 # Local tools (downloaded Maven, etc.)
 .tools/
+*.zip
 
 # IDE-Dateien
-.idea/
 .qodo/
-*.iml
 
-# Build/Dependency
-node_modules/
-target/
+# Frontend build output
 src/main/frontend/bin/
+dist/
 
 # Runtime cache (generated)
-/cache/
+cache/
 
-# Spotify-Zugangsdaten nicht pushen
+# Spotify credentials
 spotify.properties
 spotify.properties.txt
 spotify.tokens
-/project_structure.txt
-
-# Local config (keep example files committed)
-config/vendors.json
 
 # Environment files with secrets (NEVER commit these!)
 .env
 .env.local
 .env.*.local
+.env.staging
+.env.production
 *.env
+
+# Local config (keep example files committed)
+config/vendors.json
+
+# Generated files
+project_structure.txt
+
+# Background Data / Documentation
+docs/
