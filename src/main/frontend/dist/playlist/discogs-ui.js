@@ -335,6 +335,8 @@ export async function refreshWishlistPreview(resetPage = false) {
         return;
     }
     try {
+        const previousTotal = Math.max(0, Number.isFinite(discogsUiState.wishlistTotal) ? discogsUiState.wishlistTotal : 0);
+        const previousItems = Array.isArray(discogsUiState.wishlist) ? [...discogsUiState.wishlist] : [];
         const paging = getWishlistPaging();
         const page = Math.max(1, paging.page);
         const limit = Math.max(1, paging.limit);
@@ -354,6 +356,18 @@ export async function refreshWishlistPreview(resetPage = false) {
         if (!hasPagingMeta || ignoredPage) {
             const legacy = await fetchLegacyWishlistBatch();
             const legacyPageItems = sliceWishlistPage(legacy.items, page, limit);
+            const unexpectedLegacyReset = page > 1
+                && previousTotal > 0
+                && legacy.total === 0
+                && legacyPageItems.length === 0;
+            if (unexpectedLegacyReset) {
+                discogsUiState.wishlistPage = Math.max(1, page - 1);
+                discogsUiState.wishlistLimit = limit;
+                discogsUiState.wishlist = previousItems;
+                renderWishlistGrid(previousItems, previousTotal);
+                emitPlaylistStatus("Wishlist page temporarily unavailable. Showing previous page.", "error");
+                return;
+            }
             discogsUiState.wishlistPage = Math.max(1, page);
             discogsUiState.wishlistLimit = limit;
             discogsUiState.wishlist = legacyPageItems;
@@ -363,6 +377,18 @@ export async function refreshWishlistPreview(resetPage = false) {
                 return;
             }
             renderWishlistGrid(legacyPageItems, legacy.total);
+            return;
+        }
+        const unexpectedReset = page > 1
+            && previousTotal > 0
+            && total === 0
+            && items.length === 0;
+        if (unexpectedReset) {
+            discogsUiState.wishlistPage = Math.max(1, page - 1);
+            discogsUiState.wishlistLimit = payloadLimit;
+            discogsUiState.wishlist = previousItems;
+            renderWishlistGrid(previousItems, previousTotal);
+            emitPlaylistStatus("Wishlist page temporarily unavailable. Showing previous page.", "error");
             return;
         }
         discogsUiState.wishlistPage = payloadPage;
@@ -439,7 +465,16 @@ async function startDiscogsOAuth(state) {
             cache: "no-cache",
         });
         if (!res.ok) {
-            throw new Error("HTTP " + res.status);
+            let message = "HTTP " + res.status;
+            try {
+                const payload = await res.json();
+                const apiMessage = payload?.error?.message;
+                if (typeof apiMessage === "string" && apiMessage.trim()) {
+                    message = apiMessage.trim();
+                }
+            } catch (_a) {
+            }
+            throw new Error(message);
         }
         const payload = await res.json();
         const authorizeUrl = typeof payload?.authorizeUrl === "string" ? payload.authorizeUrl : "";

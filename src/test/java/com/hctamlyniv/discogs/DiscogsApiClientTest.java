@@ -56,6 +56,26 @@ class DiscogsApiClientTest {
                 Json.respond(ex, 201, "{}");
                 return;
             }
+            String rawQuery = ex.getRequestURI().getRawQuery() == null ? "" : ex.getRequestURI().getRawQuery();
+            if (rawQuery.contains("page=2")) {
+                Json.respond(ex, 200, """
+                {
+                  "pagination": { "items": 2 },
+                  "wants": [
+                    {
+                      "basic_information": {
+                        "id": 456,
+                        "title": "Homework",
+                        "year": 1997,
+                        "thumb": "https://www.discogs.com/image/2.jpg",
+                        "artists": [ { "name": "Daft Punk" } ]
+                      }
+                    }
+                  ]
+                }
+                """);
+                return;
+            }
             Json.respond(ex, 200, """
                 {
                   "pagination": { "items": 1 },
@@ -170,6 +190,15 @@ class DiscogsApiClientTest {
         assertEquals(1, wishlist.total());
         assertEquals(1, wishlist.items().size());
         assertEquals("Discovery", wishlist.items().get(0).title());
+    }
+
+    @Test
+    void fetchWishlistBuildsFallbackUrlWhenUriMissing() {
+        WishlistResult wishlist = client.fetchWishlist("testuser", 2, 10);
+        assertEquals(2, wishlist.total());
+        assertEquals(1, wishlist.items().size());
+        assertEquals(456, wishlist.items().get(0).releaseId());
+        assertEquals("https://www.discogs.com/release/456", wishlist.items().get(0).url());
     }
 
     @Test

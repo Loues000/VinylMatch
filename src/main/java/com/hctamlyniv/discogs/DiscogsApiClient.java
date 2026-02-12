@@ -146,9 +146,10 @@ public class DiscogsApiClient {
                         targetUrl = "https://www.discogs.com" + targetUrl;
                     }
                     String safeTarget = DiscogsUrlUtils.sanitizeDiscogsWebUrl(targetUrl);
-                    if (safeTarget != null) {
-                        entries.add(new WishlistEntry(title, artist, year, thumb, safeTarget, releaseId));
+                    if (safeTarget == null && releaseId != null) {
+                        safeTarget = DiscogsUrlUtils.sanitizeDiscogsWebUrl("https://www.discogs.com/release/" + releaseId);
                     }
+                    entries.add(new WishlistEntry(title, artist, year, thumb, safeTarget, releaseId));
                 }
             }
             return new WishlistResult(entries, total);

@@ -25,6 +25,8 @@ public class DiscogsOAuthService {
     private static final URI REQUEST_TOKEN_URI = URI.create("https://api.discogs.com/oauth/request_token");
     private static final URI ACCESS_TOKEN_URI = URI.create("https://api.discogs.com/oauth/access_token");
     private static final String AUTHORIZE_URL = "https://www.discogs.com/oauth/authorize";
+    private static final int REQUEST_TOKEN_RETRY_LIMIT = 3;
+    private static final long REQUEST_TOKEN_RETRY_BASE_DELAY_MS = 350L;
 
     private final String consumerKey;
     private final String consumerSecret;
@@ -85,27 +87,45 @@ public class DiscogsOAuthService {
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
 
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.warn("Discogs request_token failed with status {}", response.statusCode());
-                return Optional.empty();
-            }
-            Map<String, String> parsed = DiscogsOAuth1.parseFormEncoded(response.body());
-            String requestToken = parsed.get("oauth_token");
-            String requestTokenSecret = parsed.get("oauth_token_secret");
-            String callbackConfirmed = parsed.get("oauth_callback_confirmed");
-            if (requestToken == null || requestTokenSecret == null || !"true".equalsIgnoreCase(callbackConfirmed)) {
-                log.warn("Discogs request_token response missing required fields");
-                return Optional.empty();
-            }
+        for (int attempt = 1; attempt <= REQUEST_TOKEN_RETRY_LIMIT; attempt++) {
+            try {
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                int status = response.statusCode();
+                if (status < 200 || status >= 300) {
+                    String bodySnippet = abbreviateForLog(response.body());
+                    log.warn("Discogs request_token failed with status {}{}", status, bodySnippet == null ? "" : " (" + bodySnippet + ")");
+                    if (isTransientStatus(status) && attempt < REQUEST_TOKEN_RETRY_LIMIT) {
+                        sleepBackoff(attempt);
+                        continue;
+                    }
+                    return Optional.empty();
+                }
 
-            pendingTokens.put(requestToken, new PendingRequestToken(requestTokenSecret, state, System.currentTimeMillis()));
-            return Optional.of(AUTHORIZE_URL + "?oauth_token=" + DiscogsOAuth1.percentEncode(requestToken));
-        } catch (Exception e) {
-            log.warn("Discogs OAuth start failed: {}", e.getMessage());
-            return Optional.empty();
+                Map<String, String> parsed = DiscogsOAuth1.parseFormEncoded(response.body());
+                String requestToken = parsed.get("oauth_token");
+                String requestTokenSecret = parsed.get("oauth_token_secret");
+                String callbackConfirmed = parsed.get("oauth_callback_confirmed");
+                if (requestToken == null || requestTokenSecret == null || !"true".equalsIgnoreCase(callbackConfirmed)) {
+                    log.warn("Discogs request_token response missing required fields");
+                    return Optional.empty();
+                }
+
+                pendingTokens.put(requestToken, new PendingRequestToken(requestTokenSecret, state, System.currentTimeMillis()));
+                return Optional.of(AUTHORIZE_URL + "?oauth_token=" + DiscogsOAuth1.percentEncode(requestToken));
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                log.warn("Discogs OAuth start interrupted");
+                return Optional.empty();
+            } catch (Exception e) {
+                log.warn("Discogs OAuth start failed on attempt {}: {}", attempt, e.getMessage());
+                if (isTransientException(e) && attempt < REQUEST_TOKEN_RETRY_LIMIT) {
+                    sleepBackoff(attempt);
+                    continue;
+                }
+                return Optional.empty();
+            }
         }
+        return Optional.empty();
     }
 
     public Optional<AccessTokenResponse> exchangeAccessToken(String requestToken, String verifier, String state) {
@@ -190,6 +210,34 @@ public class DiscogsOAuthService {
         byte[] stateBytes = new byte[24];
         new java.security.SecureRandom().nextBytes(stateBytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(stateBytes);
+    }
+
+    private static boolean isTransientStatus(int status) {
+        return status == 429 || status >= 500;
+    }
+
+    private static boolean isTransientException(Throwable throwable) {
+        return throwable instanceof java.io.IOException;
+    }
+
+    private static void sleepBackoff(int attempt) {
+        long delay = REQUEST_TOKEN_RETRY_BASE_DELAY_MS * Math.max(1, attempt);
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static String abbreviateForLog(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= 160) {
+            return normalized;
+        }
+        return normalized.substring(0, 157) + "...";
     }
 
     private static RedirectUriResolution resolveRedirectUriFromConfig() {
