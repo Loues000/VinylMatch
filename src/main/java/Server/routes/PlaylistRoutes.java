@@ -96,8 +96,13 @@ public class PlaylistRoutes {
                     return;
                 }
             }
+            // Safety default: don't accidentally fetch huge playlists in one request if limit is omitted.
+            // The frontend uses paging and passes an explicit limit.
+            if (limit <= 0) {
+                limit = 50;
+            }
 
-            String limitLog = (limit > 0) ? String.valueOf(limit) : "all";
+            String limitLog = String.valueOf(limit);
             log.info("GET /api/playlist id={} offset={} limit={}", id, offset, limitLog);
 
             // Resolve best available token (user token first, app token fallback for public playlists)
