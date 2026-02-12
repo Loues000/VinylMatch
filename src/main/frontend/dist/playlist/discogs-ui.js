@@ -289,14 +289,14 @@ export function applyDiscogsUi() {
     if (discogsUiState.loggedIn) {
         login.classList.add("hidden");
         dashboard.classList.remove("hidden");
-        updateDiscogsChip(discogsUiState.oauthSession ? "Verbunden (OAuth)" : "Verbunden", true);
+        updateDiscogsChip(discogsUiState.oauthSession ? "Connected (OAuth)" : "Connected", true);
         if (user) {
             user.textContent = discogsUiState.name || discogsUiState.username || "Discogs";
         }
     } else {
         login.classList.remove("hidden");
         dashboard.classList.add("hidden");
-        updateDiscogsChip("Nicht verbunden", false);
+        updateDiscogsChip("Not connected", false);
     }
     applyOAuthButtonState();
     emitDiscogsAuthState();

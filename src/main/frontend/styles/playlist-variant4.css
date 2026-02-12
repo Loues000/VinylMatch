@@ -668,7 +668,7 @@ body {
     align-items: baseline;
     flex-wrap: wrap;
     margin-bottom: clamp(12px, 2vh, 16px);
-    gap: 10px;
+    gap: 8px;
 }
 
 .discogs-wishlist__header h4 {
