@@ -36,7 +36,7 @@ jobs:
   deploy-staging:
     runs-on: ubuntu-latest
     needs: build-release-artifact
-    if: github.ref == 'refs/heads/develop' && secrets.STAGING_SSH_HOST != ''
+    if: github.ref == 'refs/heads/develop'
     environment: staging
 
     steps:
@@ -47,6 +47,7 @@ jobs:
         path: ./release
 
     - name: Upload jar to staging host
+      if: secrets.STAGING_SSH_HOST != ''
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ secrets.STAGING_SSH_HOST }}
@@ -56,6 +57,7 @@ jobs:
         target: /opt/vinylmatch
 
     - name: Restart staging service
+      if: secrets.STAGING_SSH_HOST != ''
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.STAGING_SSH_HOST }}
@@ -69,7 +71,7 @@ jobs:
   deploy-production:
     runs-on: ubuntu-latest
     needs: build-release-artifact
-    if: github.ref == 'refs/heads/main' && secrets.PRODUCTION_SSH_HOST != ''
+    if: github.ref == 'refs/heads/main'
     environment: production
 
     steps:
@@ -80,6 +82,7 @@ jobs:
         path: ./release
 
     - name: Upload jar to production host
+      if: secrets.PRODUCTION_SSH_HOST != ''
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ secrets.PRODUCTION_SSH_HOST }}
@@ -89,6 +92,7 @@ jobs:
         target: /opt/vinylmatch
 
     - name: Restart production service
+      if: secrets.PRODUCTION_SSH_HOST != ''
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.PRODUCTION_SSH_HOST }}
