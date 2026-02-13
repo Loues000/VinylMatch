@@ -22,9 +22,15 @@ It's built for collectors, DJs, archivists, and anyone who wants to connect a di
 ## How It Works
 
 1. Log in with Spotify
-2. Load a playlist
+2. Paste a Spotify playlist URL (or 22-char playlist ID) and load it
 3. For each track, compute a match candidate (Discogs master/release)
 4. Display results and vendor links in the web UI
+
+### Official Spotify Playlists
+
+- VinylMatch supports official/curated Spotify playlists when you paste a direct playlist URL (for example `https://open.spotify.com/playlist/...`).
+- Spotify does not provide a public API endpoint to browse/search all official playlists globally.
+- Because of this API limitation, official playlists must be opened via direct URL/ID instead of in-app browsing.
 
 ## Matching Strategy (Discogs)
 
