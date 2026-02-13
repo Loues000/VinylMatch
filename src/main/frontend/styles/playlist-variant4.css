@@ -3,8 +3,6 @@
    Minimalistic but with brutalist aesthetics
    ============================================ */
 
-@import url('./base.css');
-
 :root {
     --playlist-font-body: "Space Mono", "IBM Plex Mono", monospace;
     --playlist-font-display: "Archivo Black", "Arial Black", sans-serif;
@@ -71,12 +69,8 @@ body {
 
 /* Page container */
 .playlist-page {
-    width: 100%;
     max-width: min(1100px, 95vw);
-    margin: 0 auto;
     padding: clamp(80px, 15vh, 100px) clamp(16px, 3vw, 24px) clamp(24px, 5vh, 48px);
-    display: flex;
-    flex-direction: column;
     gap: clamp(20px, 4vh, 32px);
 }
 
@@ -87,10 +81,7 @@ body {
     border-radius: 0;
     box-shadow: clamp(6px, 1vw, 10px) clamp(6px, 1vw, 10px) 0 var(--playlist-border);
     padding: clamp(20px, 3vh, 32px);
-    display: flex;
-    flex-wrap: wrap;
     gap: clamp(16px, 3vw, 24px);
-    align-items: center;
     position: relative;
 }
 
@@ -110,13 +101,10 @@ body {
     height: clamp(120px, 20vw, 180px);
     border: clamp(2px, 0.4vw, 3px) solid var(--playlist-border);
     border-radius: 0;
-    object-fit: cover;
     background: var(--playlist-bg);
 }
 
 #playlist-header .header-info {
-    display: flex;
-    flex-direction: column;
     gap: clamp(6px, 1vh, 10px);
     min-width: min(240px, 60vw);
     flex: 1;
@@ -131,11 +119,6 @@ body {
     color: var(--playlist-text);
 }
 
-#playlist-header .playlist-title a {
-    color: inherit;
-    text-decoration: none;
-}
-
 #playlist-header .playlist-subtitle {
     font-size: clamp(12px, 1.5vw, 14px);
     color: var(--playlist-muted);
@@ -145,9 +128,6 @@ body {
 
 /* Toolbar */
 .playlist-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     gap: clamp(12px, 2vw, 16px);
     flex-wrap: wrap;
 }
@@ -162,9 +142,8 @@ body {
     font-size: clamp(11px, 1.3vw, 13px);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    cursor: pointer;
     clip-path: polygon(0 0, 100% 0, 100% 75%, 92% 100%, 0 100%);
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .sidebar-toggle:hover {
@@ -175,7 +154,6 @@ body {
 }
 
 .view-toggle {
-    display: inline-flex;
     gap: 0;
     border: clamp(2px, 0.4vw, 3px) solid var(--playlist-border);
     border-radius: 0;
@@ -184,7 +162,6 @@ body {
 }
 
 .view-toggle-btn {
-    appearance: none;
     border: none;
     border-right: 1px solid var(--playlist-border);
     border-radius: 0;
@@ -195,8 +172,7 @@ body {
     text-transform: uppercase;
     background: transparent;
     color: var(--playlist-muted);
-    cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .view-toggle-btn:last-child {
@@ -214,7 +190,6 @@ body {
 
 /* Status message */
 .status-message {
-    margin: 0;
     font-size: clamp(12px, 1.4vw, 13px);
     color: var(--playlist-muted);
     border-left: 3px solid #0066ff;
@@ -227,8 +202,6 @@ body {
 
 /* Tracks container */
 .playlist-tracks {
-    display: flex;
-    flex-direction: column;
     gap: clamp(12px, 2vh, 16px);
 }
 
@@ -240,10 +213,8 @@ body {
 
 /* Track item - brutalist card */
 .playlist-tracks .track {
-    display: grid;
     grid-template-columns: clamp(60px, 10vw, 80px) 1fr auto;
     gap: clamp(12px, 2vw, 20px);
-    align-items: center;
     background: var(--playlist-panel);
     border: clamp(2px, 0.4vw, 3px) solid var(--playlist-border);
     border-radius: 0;
@@ -320,19 +291,12 @@ body {
 }
 
 .track .actions {
-    display: flex;
     gap: clamp(6px, 1vw, 8px);
-    align-items: center;
-    justify-content: center;
-    flex-wrap: wrap;
 }
 
 /* Action buttons */
 .discogs-action,
 .vendor-link {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: clamp(32px, 5vw, 40px);
     height: clamp(32px, 5vw, 40px);
     border: clamp(2px, 0.4vw, 3px) solid var(--playlist-border);
@@ -341,9 +305,7 @@ body {
     color: var(--playlist-text);
     font-size: clamp(10px, 1.2vw, 12px);
     font-weight: 700;
-    text-decoration: none;
-    cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
 
 .discogs-action:hover,
@@ -418,7 +380,7 @@ body {
     letter-spacing: 0.04em;
     cursor: pointer;
     clip-path: polygon(0 0, 100% 0, 100% 75%, 92% 100%, 0 100%);
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .load-more:hover {
@@ -430,68 +392,18 @@ body {
 
 /* Sidebar */
 .playlist-sidebar {
-    position: fixed;
     top: 0;
-    right: 0;
-    bottom: 0;
     width: min(380px, 90vw);
-    overflow-x: hidden;
-    overflow-y: auto;
     padding: clamp(80px, 12vh, 100px) clamp(16px, 3vw, 20px) clamp(20px, 4vh, 24px);
     background: var(--playlist-panel);
     border-left: clamp(3px, 0.5vw, 4px) solid var(--playlist-border);
-    transform: translateX(105%);
     transition: transform 0.3s ease;
-    z-index: 1100;
-    display: flex;
-    flex-direction: column;
     gap: clamp(16px, 3vh, 20px);
-}
-
-.playlist-page.sidebar-open .playlist-sidebar {
-    transform: translateX(0);
 }
 
 /* Sidebar backdrop */
 .sidebar-backdrop {
-    position: fixed;
-    inset: 0;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 1050;
-}
-
-/* Discogs card header */
-.discogs-card__header {
-    background: var(--playlist-bg);
-    border: clamp(2px, 0.4vw, 3px) solid var(--playlist-border);
-    border-radius: 0;
-    padding: clamp(16px, 2.5vh, 20px);
-}
-
-.discogs-card__header .eyebrow {
-    font-size: clamp(10px, 1.3vw, 11px);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #0066ff;
-    margin-bottom: clamp(6px, 1vh, 8px);
-}
-
-:root[data-theme="dark"] .discogs-card__header .eyebrow {
-    color: #00ccff;
-}
-
-.discogs-card__header h2 {
-    font-family: var(--playlist-font-display);
-    font-size: clamp(1.2rem, 2.5vw, 1.6rem);
-    text-transform: uppercase;
-    letter-spacing: -0.01em;
-    color: var(--playlist-text);
-    margin-bottom: clamp(6px, 1vh, 8px);
-}
-
-.discogs-card__header .muted {
-    font-size: clamp(11px, 1.4vw, 12px);
-    color: var(--playlist-muted);
 }
 
 .discogs-chip {
@@ -585,7 +497,7 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.05em;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn:hover {
@@ -626,9 +538,6 @@ body {
 }
 
 .discogs-summary {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
     margin-bottom: clamp(8px, 2.5vh, 16px);
     padding-bottom: clamp(8px, 2.5vh, 16px);
     border-bottom: 2px dashed var(--playlist-border);
@@ -650,7 +559,6 @@ body {
 }
 
 .discogs-actions {
-    display: flex;
     gap: clamp(8px, 1.5vw, 12px);
 }
 
@@ -663,12 +571,7 @@ body {
 }
 
 .discogs-wishlist__header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    flex-wrap: wrap;
     margin-bottom: clamp(12px, 2vh, 16px);
-    gap: 8px;
 }
 
 .discogs-wishlist__header h4 {
@@ -686,8 +589,6 @@ body {
 }
 
 .discogs-wishlist__pager {
-    display: inline-flex;
-    align-items: center;
     gap: 6px;
     margin-left: auto;
 }
@@ -701,8 +602,8 @@ body {
 }
 
 .discogs-wishlist__page-btn {
-    width: 28px;
-    height: 28px;
+    width: 34px;
+    height: 34px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -721,8 +622,6 @@ body {
 }
 
 .discogs-wishlist__grid {
-    display: flex;
-    flex-direction: column;
     gap: 10px;
 }
 
@@ -773,8 +672,6 @@ body {
 
 .discogs-wishlist__meta {
     grid-area: meta;
-    display: flex;
-    align-items: center;
     gap: 6px;
     margin: 0;
     min-width: 0;
@@ -875,11 +772,41 @@ body {
         width: 100%;
         justify-content: center;
     }
+
+    .discogs-login__row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .discogs-login__row .btn {
+        width: 100%;
+    }
 }
 
 @media (max-width: 540px) {
     .playlist-tracks[data-view-mode="grid"] {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .discogs-token input {
+        font-size: 16px;
+    }
+
+    .discogs-action,
+    .vendor-link {
+        width: 40px;
+        height: 40px;
+    }
+
+    .discogs-wishlist__page-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .view-toggle-btn,
+    .sidebar-toggle,
+    .load-more {
+        min-height: 44px;
     }
 }
 

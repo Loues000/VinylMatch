@@ -245,7 +245,6 @@ body::after {
 .sidebar-toggle:focus-visible,
 .sidebar-tab:focus-visible,
 .pager-btn:focus-visible,
-.variant-link:focus-visible,
 .btn:focus-visible {
     outline: 2px solid var(--home-accent);
     outline-offset: 2px;
@@ -594,67 +593,6 @@ body::after {
     max-width: 60ch;
 }
 
-.variant-switch {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.variant-link {
-    display: inline-flex;
-    align-items: center;
-    min-height: 38px;
-    padding: 8px 12px;
-    border-radius: 999px;
-    border: 1px solid var(--home-border-strong);
-    color: var(--home-text);
-    text-decoration: none;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
-}
-
-.variant-link:hover {
-    transform: translateY(-1px);
-    border-color: var(--home-accent);
-}
-
-.variant-link.active {
-    border-color: transparent;
-    background: linear-gradient(135deg, var(--home-accent) 0%, var(--home-accent-2) 100%);
-    color: #ffffff;
-}
-
-.hero-metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-}
-
-.metric-card {
-    border: 1px solid var(--home-border);
-    border-radius: 12px;
-    padding: 10px 12px;
-    background: color-mix(in srgb, var(--home-panel-strong) 82%, transparent);
-}
-
-.metric-label {
-    margin: 0;
-    font-size: 11px;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--home-muted);
-}
-
-.metric-value {
-    margin: 4px 0 0;
-    font-size: 14px;
-    font-weight: 700;
-    line-height: 1.3;
-}
-
 .paste-panel {
     border: var(--home-panel-border);
     border-radius: var(--home-panel-radius);
@@ -722,20 +660,6 @@ body::after {
     margin: 0;
     font-size: 12px;
     color: var(--home-muted);
-}
-
-.status-message {
-    margin: 0;
-    font-size: 13px;
-    color: var(--status-info);
-}
-
-.status-message.error {
-    color: var(--status-error);
-}
-
-.status-message.success {
-    color: var(--status-success);
 }
 
 #playlist-url[aria-invalid="true"] {
@@ -984,7 +908,7 @@ body::after {
     letter-spacing: 0.08em;
     text-transform: uppercase;
     box-shadow: 0 4px 12px rgba(42, 95, 77, 0.25);
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 :root[data-home-variant="3"] .actions .btn:hover {
@@ -1003,12 +927,6 @@ body::after {
     font-size: 10px;
     color: #7a9a8a;
     letter-spacing: 0.02em;
-}
-
-a,
-button,
-.btn {
-    touch-action: manipulation;
 }
 
 @media (max-width: 1160px) {
@@ -1043,11 +961,6 @@ button,
     .hero-card,
     .paste-panel {
         padding: 18px;
-    }
-
-    .variant-link {
-        width: 100%;
-        justify-content: center;
     }
 
     .paste-panel__header {
@@ -1439,7 +1352,7 @@ body::after {
 }
 
 .hero-logo-wrap::after {
-    content: "v0.8";
+    content: "v0.9";
     position: absolute;
     top: -1px;
     right: -1px;
@@ -1455,15 +1368,7 @@ body::after {
     color: #f5f5f0;
 }
 
-.hero-logo {
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: 100%;
-    object-fit: contain;
-}
-
-/* Variant 4 SVG Logo */
+.hero-logo,
 .hero-logo-svg {
     max-width: 100%;
     max-height: 100%;
@@ -1643,5 +1548,29 @@ body::after {
         min-width: 100px;
         font-size: 10px;
         padding: 8px 12px;
+    }
+}
+
+@media (max-width: 540px) {
+    .home-main {
+        padding: 60px 12px 14px;
+    }
+
+    #playlist-url {
+        font-size: 16px;
+        min-height: 88px;
+    }
+
+    .help {
+        line-height: 1.45;
+    }
+
+    .actions {
+        width: 100%;
+    }
+
+    .actions .btn {
+        width: 100%;
+        min-height: 46px;
     }
 }

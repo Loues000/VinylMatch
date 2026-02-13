@@ -120,20 +120,6 @@ body {
     gap: 12px;
 }
 
-.status-message {
-    margin: 0;
-    font-size: 13px;
-    color: var(--status-info);
-}
-
-.status-message.error {
-    color: var(--status-error);
-}
-
-.status-message.success {
-    color: var(--status-success);
-}
-
 .sidebar-toggle {
     display: inline-flex;
     align-items: center;
@@ -771,8 +757,8 @@ body {
 }
 
 .discogs-wishlist__page-btn {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

@@ -133,6 +133,13 @@ a {
     color: inherit;
 }
 
+a,
+button,
+.btn {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
 /* ============================================================================
    Utilities
    ========================================================================== */
@@ -183,6 +190,20 @@ body.drawer-open {
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 600;
+}
+
+.status-message {
+    margin: 0;
+    font-size: 13px;
+    color: var(--status-info);
+}
+
+.status-message.error {
+    color: var(--status-error);
+}
+
+.status-message.success {
+    color: var(--status-success);
 }
 
 /* ============================================================================
