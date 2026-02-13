@@ -7,7 +7,7 @@ import { primaryArtist, normalizeForSearch } from "../common/playlist-utils.js";
 import { getVendors, buildVendorUrl } from "../common/vendors.js";
 import { buildTrackKey, registerTrackElement } from "./track-registry.js";
 import { safeDiscogsUrl, markDiscogsResult, discogsState } from "./discogs-state.js";
-import { discogsUiState, scheduleLibraryRefresh } from "./discogs-ui.js";
+import { discogsUiState, rememberLibraryState, scheduleLibraryRefresh } from "./discogs-ui.js";
 
 function emitPlaylistStatus(message, tone = "neutral") {
     try {
@@ -414,6 +414,8 @@ export function createTrackElement(track, index, state) {
             if (res.status === 409) {
                 const membership = await checkWantlistMembership(targetUrl);
                 if (membership === true) {
+                    rememberLibraryState(track.artist, track.album, "wishlist");
+                    setLibraryState("wishlist");
                     scheduleLibraryRefresh(150, state);
                     emitPlaylistStatus("Already in wantlist.", "neutral");
                     return;
@@ -435,6 +437,8 @@ export function createTrackElement(track, index, state) {
                 }
                 throw new Error(message);
             }
+            rememberLibraryState(track.artist, track.album, "wishlist");
+            setLibraryState("wishlist");
             scheduleLibraryRefresh(150, state);
         } catch (e) {
             emitPlaylistStatus("Could not add to wantlist: " + (e instanceof Error ? e.message : String(e)), "error");

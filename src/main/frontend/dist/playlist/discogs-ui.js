@@ -5,6 +5,7 @@
 
 import { safeDiscogsUrl, safeDiscogsImage } from "./discogs-state.js";
 import { buildTrackKey, getRegistryEntry } from "./track-registry.js";
+import { normalizeForSearch, primaryArtist } from "../common/playlist-utils.js";
 
 function emitPlaylistStatus(message, tone = "neutral") {
     try {
@@ -25,15 +26,204 @@ export const discogsUiState = {
     wishlistLimit: 12,
     wishlistTotal: 0,
     statuses: new Map(),
+    libraryKeyCache: new Map(),
+    libraryCacheUser: null,
 };
 
 const DISCOGS_TOKEN_STORAGE_KEY = "vinylmatch_discogs_token";
+const LIBRARY_KEY_CACHE_STORAGE_KEY = "vinylmatch_discogs_library_cache_v1";
 const WISHLIST_PAGE_SIZE = 12;
+const LIBRARY_CACHE_MAX_ENTRIES = 2000;
+const LIBRARY_CACHE_TTL_MS = 30 * 60 * 1000;
+const LIBRARY_CACHE_TTL_EMPTY_MS = 3 * 60 * 1000;
+const LIBRARY_STATE_OWNED = "owned";
+const LIBRARY_STATE_WISHLIST = "wishlist";
+const LIBRARY_STATE_NONE = "none";
 
 let discogsLoginPoll = null;
 let libraryRefreshTimer = null;
 let autoLoginInFlight = null;
 let discogsOAuthPopup = null;
+let activePlaylistState = null;
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeLibraryValue(value) {
+    if (!value) return "";
+    return normalizeForSearch(value).trim().toLowerCase();
+}
+
+function stripArtistPrefixFromTitle(title, artist) {
+    if (!title) return "";
+    const rawTitle = String(title).trim();
+    const artistName = String(artist || "").trim();
+    if (!artistName) return rawTitle;
+    const escapedArtist = escapeRegExp(artistName);
+    if (!escapedArtist) return rawTitle;
+    return rawTitle.replace(new RegExp(`^${escapedArtist}\\s*[-:]+\\s*`, "i"), "").trim();
+}
+
+function buildArtistAlbumKey(artist, album) {
+    const normalizedArtist = normalizeLibraryValue(primaryArtist(artist) || artist);
+    const normalizedAlbum = normalizeLibraryValue(album);
+    if (!normalizedArtist || !normalizedAlbum) {
+        return null;
+    }
+    return `${normalizedArtist}|${normalizedAlbum}`;
+}
+
+function buildWishlistEntryKey(entry) {
+    if (!entry) return null;
+    const artist = typeof entry.artist === "string" ? entry.artist : "";
+    const rawTitle = typeof entry.title === "string" ? entry.title : "";
+    const album = stripArtistPrefixFromTitle(rawTitle, artist) || rawTitle;
+    return buildArtistAlbumKey(artist, album);
+}
+
+function persistLibraryCache() {
+    try {
+        const now = Date.now();
+        const rows = [];
+        for (const [key, entry] of discogsUiState.libraryKeyCache.entries()) {
+            if (!entry || typeof entry.expiresAt !== "number" || entry.expiresAt <= now) continue;
+            rows.push([key, entry.state, entry.expiresAt]);
+        }
+        rows.sort((a, b) => b[2] - a[2]);
+        if (rows.length > LIBRARY_CACHE_MAX_ENTRIES) {
+            rows.length = LIBRARY_CACHE_MAX_ENTRIES;
+        }
+        const payload = {
+            v: 1,
+            user: discogsUiState.libraryCacheUser || null,
+            rows,
+        };
+        window.localStorage.setItem(LIBRARY_KEY_CACHE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (_a) {
+    }
+}
+
+function loadLibraryCacheFromStorage() {
+    try {
+        const raw = window.localStorage.getItem(LIBRARY_KEY_CACHE_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const rows = Array.isArray(parsed?.rows) ? parsed.rows : [];
+        const user = typeof parsed?.user === "string" && parsed.user.trim() ? parsed.user.trim() : null;
+        const now = Date.now();
+        discogsUiState.libraryKeyCache.clear();
+        for (const row of rows) {
+            if (!Array.isArray(row) || row.length < 3) continue;
+            const key = typeof row[0] === "string" ? row[0] : "";
+            const state = row[1];
+            const expiresAt = Number(row[2]);
+            if (!key || !Number.isFinite(expiresAt) || expiresAt <= now) continue;
+            if (state !== LIBRARY_STATE_OWNED && state !== LIBRARY_STATE_WISHLIST && state !== LIBRARY_STATE_NONE) continue;
+            discogsUiState.libraryKeyCache.set(key, { state, expiresAt });
+        }
+        discogsUiState.libraryCacheUser = user;
+    } catch (_a) {
+        discogsUiState.libraryKeyCache.clear();
+        discogsUiState.libraryCacheUser = null;
+    }
+}
+
+function clearLibraryCache() {
+    discogsUiState.libraryKeyCache.clear();
+    discogsUiState.libraryCacheUser = null;
+    try {
+        window.localStorage.removeItem(LIBRARY_KEY_CACHE_STORAGE_KEY);
+    } catch (_a) {
+    }
+}
+
+function ensureLibraryCacheIdentity(username) {
+    const user = typeof username === "string" && username.trim() ? username.trim() : null;
+    if (!user) {
+        return;
+    }
+    if (!discogsUiState.libraryCacheUser) {
+        if (discogsUiState.libraryKeyCache.size > 0) {
+            discogsUiState.libraryKeyCache.clear();
+        }
+        discogsUiState.libraryCacheUser = user;
+        persistLibraryCache();
+        return;
+    }
+    if (discogsUiState.libraryCacheUser !== user) {
+        clearLibraryCache();
+        discogsUiState.libraryCacheUser = user;
+        persistLibraryCache();
+    }
+}
+
+function setCachedLibraryStateByKey(key, state) {
+    if (!key) return false;
+    const safeState = state === LIBRARY_STATE_OWNED || state === LIBRARY_STATE_WISHLIST || state === LIBRARY_STATE_NONE
+        ? state
+        : LIBRARY_STATE_NONE;
+    const ttl = safeState === LIBRARY_STATE_NONE ? LIBRARY_CACHE_TTL_EMPTY_MS : LIBRARY_CACHE_TTL_MS;
+    const nextExpiresAt = Date.now() + ttl;
+    const previous = discogsUiState.libraryKeyCache.get(key);
+    if (previous && previous.state === safeState && previous.expiresAt >= nextExpiresAt - 1000) {
+        return false;
+    }
+    discogsUiState.libraryKeyCache.set(key, { state: safeState, expiresAt: nextExpiresAt });
+    if (discogsUiState.libraryKeyCache.size > LIBRARY_CACHE_MAX_ENTRIES) {
+        const sorted = [...discogsUiState.libraryKeyCache.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+        while (sorted.length > LIBRARY_CACHE_MAX_ENTRIES) {
+            const [oldestKey] = sorted.shift();
+            discogsUiState.libraryKeyCache.delete(oldestKey);
+        }
+    }
+    return true;
+}
+
+function getCachedLibraryStateByKey(key) {
+    if (!key) return null;
+    const entry = discogsUiState.libraryKeyCache.get(key);
+    if (!entry) return null;
+    if (typeof entry.expiresAt !== "number" || entry.expiresAt <= Date.now()) {
+        discogsUiState.libraryKeyCache.delete(key);
+        return null;
+    }
+    return entry.state;
+}
+
+function cacheWishlistEntries(entries) {
+    if (!Array.isArray(entries)) return;
+    let changed = false;
+    for (const item of entries) {
+        const key = buildWishlistEntryKey(item);
+        if (!key) continue;
+        const existing = getCachedLibraryStateByKey(key);
+        if (existing === LIBRARY_STATE_OWNED) {
+            continue;
+        }
+        changed = setCachedLibraryStateByKey(key, LIBRARY_STATE_WISHLIST) || changed;
+    }
+    if (changed) {
+        persistLibraryCache();
+    }
+}
+
+export function rememberLibraryState(artist, album, state) {
+    const key = buildArtistAlbumKey(artist, album);
+    if (!key) return;
+    const nextState = state === LIBRARY_STATE_OWNED ? LIBRARY_STATE_OWNED
+        : state === LIBRARY_STATE_WISHLIST ? LIBRARY_STATE_WISHLIST
+            : LIBRARY_STATE_NONE;
+    const changed = setCachedLibraryStateByKey(key, nextState);
+    if (changed) {
+        persistLibraryCache();
+    }
+    if (activePlaylistState) {
+        refreshLibraryBadgesLocally(null, activePlaylistState);
+    }
+}
+
+loadLibraryCacheFromStorage();
 
 function readStoredDiscogsToken() {
     try {
@@ -276,6 +466,7 @@ export async function refreshDiscogsStatus() {
         discogsUiState.oauthSession = false;
         discogsUiState.username = null;
     } finally {
+        ensureLibraryCacheIdentity(discogsUiState.loggedIn ? discogsUiState.username : null);
         applyDiscogsUi();
     }
 }
@@ -332,6 +523,9 @@ export async function refreshWishlistPreview(resetPage = false) {
         discogsUiState.wishlist = [];
         discogsUiState.wishlistTotal = 0;
         renderWishlistGrid([], 0);
+        if (activePlaylistState) {
+            refreshLibraryBadgesLocally(null, activePlaylistState);
+        }
         return;
     }
     try {
@@ -371,12 +565,16 @@ export async function refreshWishlistPreview(resetPage = false) {
             discogsUiState.wishlistPage = Math.max(1, page);
             discogsUiState.wishlistLimit = limit;
             discogsUiState.wishlist = legacyPageItems;
+            cacheWishlistEntries(legacyPageItems);
             if (legacy.total > 0 && legacyPageItems.length === 0 && discogsUiState.wishlistPage > 1) {
                 discogsUiState.wishlistPage -= 1;
                 await refreshWishlistPreview(false);
                 return;
             }
             renderWishlistGrid(legacyPageItems, legacy.total);
+            if (activePlaylistState) {
+                refreshLibraryBadgesLocally(null, activePlaylistState);
+            }
             return;
         }
         const unexpectedReset = page > 1
@@ -394,12 +592,16 @@ export async function refreshWishlistPreview(resetPage = false) {
         discogsUiState.wishlistPage = payloadPage;
         discogsUiState.wishlistLimit = payloadLimit;
         discogsUiState.wishlist = items;
+        cacheWishlistEntries(items);
         if (total > 0 && items.length === 0 && discogsUiState.wishlistPage > 1) {
             discogsUiState.wishlistPage -= 1;
             await refreshWishlistPreview(false);
             return;
         }
         renderWishlistGrid(items, total);
+        if (activePlaylistState) {
+            refreshLibraryBadgesLocally(null, activePlaylistState);
+        }
     } catch (e) {
         console.warn("Wishlist could not be loaded", e);
     }
@@ -592,9 +794,10 @@ export async function disconnectDiscogs() {
     discogsUiState.wishlist = [];
     discogsUiState.wishlistPage = 1;
     discogsUiState.wishlistTotal = 0;
+    clearLibraryCache();
     applyDiscogsUi();
     renderWishlistGrid([], 0);
-    refreshLibraryBadgesLocally(null, null);
+    refreshLibraryBadgesLocally(null, activePlaylistState);
     emitPlaylistStatus("Discogs disconnected.", "success");
 }
 
@@ -602,19 +805,27 @@ export async function refreshLibraryStatuses(state) {
     if (!discogsUiState.loggedIn || !Array.isArray(state.aggregated?.tracks)) {
         return;
     }
-    
-    const urls = state.aggregated.tracks
-        .map((track) => track?.discogsAlbumUrl)
-        .map((url) => (typeof url === "string" ? safeDiscogsUrl(url) : null))
-        .filter((url) => !!url);
-    
-    if (!urls.length) {
-        refreshLibraryBadgesLocally(null, state);
+
+    // First pass is cache-only (artist + album key), so UI badges update cheaply.
+    refreshLibraryBadgesLocally(null, state);
+
+    const unresolvedUrls = [];
+    for (const track of state.aggregated.tracks) {
+        if (!track || typeof track.discogsAlbumUrl !== "string") continue;
+        const safeUrl = safeDiscogsUrl(track.discogsAlbumUrl);
+        if (!safeUrl) continue;
+        const key = buildArtistAlbumKey(track.artist, track.album);
+        const cachedState = key ? getCachedLibraryStateByKey(key) : null;
+        if (cachedState && cachedState !== LIBRARY_STATE_WISHLIST) continue;
+        unresolvedUrls.push(safeUrl);
+    }
+
+    if (!unresolvedUrls.length) {
         return;
     }
-    
-    const uniqueUrls = Array.from(new Set(urls)).slice(0, 120);
-    
+
+    const uniqueUrls = Array.from(new Set(unresolvedUrls)).slice(0, 120);
+
     try {
         const res = await fetch("/api/discogs/library-status", {
             method: "POST",
@@ -630,7 +841,9 @@ export async function refreshLibraryStatuses(state) {
         const flagMap = new Map();
         for (const item of results) {
             if (!item || typeof item.url !== "string") continue;
-            flagMap.set(item.url, {
+            const safeUrl = safeDiscogsUrl(item.url);
+            if (!safeUrl) continue;
+            flagMap.set(safeUrl, {
                 inWishlist: !!item.inWishlist,
                 inCollection: !!item.inCollection,
             });
@@ -645,23 +858,59 @@ export function refreshLibraryBadgesLocally(flagMap, state) {
     if (!Array.isArray(state?.aggregated?.tracks)) {
         return;
     }
-    
+
+    if (!discogsUiState.loggedIn) {
+        for (let i = 0; i < state.aggregated.tracks.length; i++) {
+            const track = state.aggregated.tracks[i];
+            if (!track) continue;
+            const key = buildTrackKey(track, i);
+            const entry = getRegistryEntry(key);
+            if (!entry?.setLibraryState) continue;
+            entry.setLibraryState(null);
+        }
+        return;
+    }
+
+    let cacheChanged = false;
     for (let i = 0; i < state.aggregated.tracks.length; i++) {
         const track = state.aggregated.tracks[i];
         if (!track || !track.discogsAlbumUrl) continue;
-        
+
         const key = buildTrackKey(track, i);
         const entry = getRegistryEntry(key);
         if (!entry?.setLibraryState) continue;
-        
-        const flags = flagMap?.get(track.discogsAlbumUrl);
-        if (flags?.inCollection) {
+
+        const safeUrl = safeDiscogsUrl(track.discogsAlbumUrl);
+        const artistAlbumKey = buildArtistAlbumKey(track.artist, track.album);
+        let resolvedState = null;
+
+        if (safeUrl && flagMap?.has(safeUrl)) {
+            const flags = flagMap.get(safeUrl);
+            if (flags?.inCollection) {
+                resolvedState = LIBRARY_STATE_OWNED;
+            } else if (flags?.inWishlist) {
+                resolvedState = LIBRARY_STATE_WISHLIST;
+            } else {
+                resolvedState = LIBRARY_STATE_NONE;
+            }
+            if (artistAlbumKey) {
+                cacheChanged = setCachedLibraryStateByKey(artistAlbumKey, resolvedState) || cacheChanged;
+            }
+        } else if (artistAlbumKey) {
+            resolvedState = getCachedLibraryStateByKey(artistAlbumKey);
+        }
+
+        if (resolvedState === LIBRARY_STATE_OWNED) {
             entry.setLibraryState("owned");
-        } else if (flags?.inWishlist) {
+        } else if (resolvedState === LIBRARY_STATE_WISHLIST) {
             entry.setLibraryState("wishlist");
         } else {
             entry.setLibraryState(null);
         }
+    }
+
+    if (cacheChanged) {
+        persistLibraryCache();
     }
 }
 
@@ -687,6 +936,7 @@ function openDiscogsPopupSafely() {
 }
 
 export function setupDiscogsPanel(state) {
+    activePlaylistState = state || null;
     const connectBtn = document.getElementById("discogs-connect");
     const oauthConnectBtn = document.getElementById("discogs-oauth-connect");
     const refreshBtn = document.getElementById("discogs-refresh");

@@ -21,6 +21,7 @@ import {
 import {
     discogsUiState,
     setupDiscogsPanel,
+    refreshLibraryBadgesLocally,
     scheduleLibraryRefresh
 } from "./playlist/discogs-ui.js";
 import { createTrackElement, PLACEHOLDER_IMG } from "./playlist/track-renderer.js";
@@ -226,6 +227,7 @@ function renderTracks(aggregated, options = {}) {
         if (!track) continue;
         container.appendChild(createTrackElement(track, i, state));
     }
+    refreshLibraryBadgesLocally(null, state);
 }
 
 // Load more handling

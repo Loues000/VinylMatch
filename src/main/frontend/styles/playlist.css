@@ -496,15 +496,50 @@ body {
     align-items: center;
     padding: 4px 8px;
     border-radius: var(--radius-full);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-default);
     background: var(--bg-secondary);
     color: var(--text-secondary);
     font-size: 11px;
     font-weight: 700;
+    white-space: nowrap;
+}
+
+.discogs-library.wishlist {
+    background: rgba(0, 102, 255, 0.12);
+    border-color: rgba(0, 102, 255, 0.42);
+    color: #0f4ea6;
 }
 
 .discogs-library.owned {
-    background: var(--accent-soft);
+    background: rgba(31, 122, 63, 0.16);
+    border-color: rgba(31, 122, 63, 0.42);
+    color: #18572f;
+}
+
+:root[data-theme="dark"] .discogs-library.wishlist {
+    background: rgba(102, 168, 255, 0.22);
+    border-color: rgba(102, 168, 255, 0.56);
+    color: #dcebff;
+}
+
+:root[data-theme="dark"] .discogs-library.owned {
+    background: rgba(121, 219, 161, 0.2);
+    border-color: rgba(121, 219, 161, 0.52);
+    color: #d8ffe7;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) .discogs-library.wishlist {
+        background: rgba(102, 168, 255, 0.22);
+        border-color: rgba(102, 168, 255, 0.56);
+        color: #dcebff;
+    }
+
+    :root:not([data-theme]) .discogs-library.owned {
+        background: rgba(121, 219, 161, 0.2);
+        border-color: rgba(121, 219, 161, 0.52);
+        color: #d8ffe7;
+    }
 }
 
 .track .release-year {
@@ -578,6 +613,14 @@ body {
 .playlist-tracks[data-view-mode="grid"] .track .meta-row {
     margin-top: auto;
     min-height: 20px;
+    align-items: flex-start;
+    align-content: flex-start;
+}
+
+.playlist-tracks[data-view-mode="grid"] .track .discogs-library {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track .discogs-action,

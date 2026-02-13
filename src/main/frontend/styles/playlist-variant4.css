@@ -361,6 +361,66 @@ body {
     border-style: dashed;
 }
 
+/* Library ownership badge */
+.discogs-library {
+    display: inline-flex;
+    align-items: center;
+    padding: clamp(3px, 0.8vh, 5px) clamp(8px, 1.5vw, 12px);
+    border: clamp(2px, 0.4vw, 3px) solid var(--playlist-border);
+    border-radius: 0;
+    background: var(--playlist-bg);
+    color: var(--playlist-text);
+    font-size: clamp(9px, 1.2vw, 11px);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.discogs-library.wishlist {
+    background: #0066ff;
+    border-color: #0066ff;
+    color: #ffffff;
+}
+
+.discogs-library.owned {
+    background: #2a5f4d;
+    border-color: #2a5f4d;
+    color: #ffffff;
+}
+
+:root[data-theme="dark"] .discogs-library.wishlist {
+    background: #00ccff;
+    border-color: #00ccff;
+    color: #0a0a0a;
+}
+
+:root[data-theme="dark"] .discogs-library.owned {
+    background: #79dba1;
+    border-color: #79dba1;
+    color: #0a0a0a;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) .discogs-library.wishlist {
+        background: #00ccff;
+        border-color: #00ccff;
+        color: #0a0a0a;
+    }
+
+    :root:not([data-theme]) .discogs-library.owned {
+        background: #79dba1;
+        border-color: #79dba1;
+        color: #0a0a0a;
+    }
+}
+
+.playlist-tracks[data-view-mode="grid"] .track .discogs-library {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* Load more button */
 .load-more-wrapper {
     display: flex;
