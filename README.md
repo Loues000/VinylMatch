@@ -105,6 +105,83 @@ VinylMatch is designed to run as a hosted multi-user app:
 - Store runtime config only in environment variables
 - Use Redis for persistent sessions in staging/production
 
+### Railway Hosting
+
+Railway is a good fit for VinylMatch because the app already runs as a single Java JAR and exposes a health endpoint on `/api/health/simple`.
+
+#### Railway Setup
+
+1. Create a new Railway project from this GitHub repository.
+2. Add a Redis service in the same Railway project.
+3. Deploy the app service from the repo root.
+4. Add a custom domain in Railway once the first deploy succeeds.
+5. Update the Spotify app's redirect URI to match the final HTTPS domain exactly.
+
+#### Railway Config In Repo
+
+- `railway.json` starts the app with `java -jar target/VinylMatch.jar`.
+- Railway should use `/api/health/simple` as the health check path.
+- Railway injects `PORT`; the app already reads this environment variable.
+
+#### Railway Environment Variables
+
+Set these in the Railway app service:
+
+| Variable | Required | Railway note |
+|----------|----------|-------------|
+| `SPOTIFY_CLIENT_ID` | Yes | From Spotify Developer Dashboard |
+| `SPOTIFY_CLIENT_SECRET` | Yes | From Spotify Developer Dashboard |
+| `SPOTIFY_REDIRECT_URI` | Yes | Set to `https://your-domain/api/auth/callback` |
+| `PUBLIC_BASE_URL` | Yes | Set to `https://your-domain` |
+| `DISCOGS_TOKEN` | Optional | Enables Discogs API matching |
+| `DISCOGS_USER_AGENT` | Recommended | Required by Discogs API terms |
+| `VINYLMATCH_MASTER_KEY` | Yes | Use a long random secret; keep stable across restarts |
+| `REDIS_HOST` | Recommended | Map from Railway Redis host |
+| `REDIS_PORT` | Recommended | Map from Railway Redis port |
+| `REDIS_PASSWORD` | Recommended | Map from Railway Redis password |
+
+If Railway exposes Redis through reference variables instead of fixed names, map them into the app's expected variables `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`.
+
+#### Domain and Spotify OAuth
+
+After Railway gives you either a generated domain or a custom domain:
+
+1. Set `PUBLIC_BASE_URL=https://your-domain`
+2. Set `SPOTIFY_REDIRECT_URI=https://your-domain/api/auth/callback`
+3. In Spotify Developer Dashboard, add that exact callback URL
+4. Redeploy the Railway service
+
+Spotify redirect URIs must match exactly, including protocol, host, and path.
+
+#### Release Flow On Railway
+
+1. Push code to GitHub.
+2. Railway redeploys the service from the connected repo.
+3. Open `https://your-domain/api/health` to confirm the deployment is healthy.
+4. Test Spotify login with the hosted callback URL.
+
+### Release Flow
+
+- Push to `develop` to run tests, build `VinylMatch.jar`, and deploy staging via `.github/workflows/deploy.yml`.
+- Create and push a version tag like `v0.1.1` to run the production release path.
+- Tagged releases publish `VinylMatch.jar` to a GitHub Release and then deploy production.
+- Do not use branch pushes to `main` as the production release trigger.
+
+### Release Checklist
+
+1. Run `mvn test` and `mvn package` locally before cutting a release.
+2. Bump the version in `pom.xml` if you are shipping a new public version.
+3. Merge the release candidate to `develop` and verify staging.
+4. Create an annotated tag such as `git tag -a v0.1.1 -m "VinylMatch v0.1.1"` on the commit you want to ship.
+5. Push the tag with `git push origin v0.1.1`.
+6. Confirm the GitHub Release contains `VinylMatch.jar` and the production environment deploy completes successfully.
+
+### GitHub Environment Requirements
+
+- `staging` should hold `STAGING_SSH_HOST`, `STAGING_SSH_USER`, and `STAGING_SSH_KEY`.
+- `production` should hold `PRODUCTION_SSH_HOST`, `PRODUCTION_SSH_USER`, and `PRODUCTION_SSH_KEY`.
+- Configure GitHub Environment protection rules if you want manual approval before production deploys.
+
 ### Configuration (Environment Variables)
 
 See `config/env.example` for a complete template.
