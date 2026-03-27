@@ -60,6 +60,7 @@ dist/
 
 # Runtime cache (generated)
 cache/
+logs/
 
 # Spotify credentials
 spotify.properties
