@@ -1,7 +1,9 @@
 import { injectHeader } from "./common/header.js";
+import { getPlaylistLoadErrorMessage, readApiError } from "./common/api-errors.js";
 import { loadPlaylist } from "./playlist.js";
 import { readRecents, storePlaylistChunk, readCachedPlaylist } from "./storage.js";
 const PLAYLIST_PAGE_SIZE = 20;
+let homeStatusTimer = null;
 function showGlobalLoading(message = "Loading playlist…") {
     const overlay = document.getElementById("global-loading");
     if (!overlay)
@@ -24,7 +26,11 @@ function showHomeStatus(message, tone = "neutral") {
     const node = document.getElementById("home-status");
     if (!node)
         return;
-    if (!message) {
+    if (homeStatusTimer) {
+        clearTimeout(homeStatusTimer);
+        homeStatusTimer = null;
+    }
+    if (!message || tone === "neutral") {
         node.textContent = "";
         node.classList.add("hidden");
         node.classList.remove("error", "success");
@@ -37,6 +43,12 @@ function showHomeStatus(message, tone = "neutral") {
     }
     else if (tone === "success") {
         node.classList.add("success");
+        homeStatusTimer = window.setTimeout(() => {
+            node.textContent = "";
+            node.classList.add("hidden");
+            node.classList.remove("error", "success");
+            homeStatusTimer = null;
+        }, 2400);
     }
 }
 function createPlaylistCard(item) {
@@ -661,7 +673,6 @@ window.addEventListener("DOMContentLoaded", () => {
                 submitting = true;
                 refreshButtonState();
                 btn.setAttribute("aria-busy", "true");
-                showHomeStatus("Loading playlist…");
                 showGlobalLoading("Loading playlist…");
                 let response;
                 try {
@@ -673,15 +684,13 @@ window.addEventListener("DOMContentLoaded", () => {
                     const cached = readCachedPlaylist(id);
                     storePlaylistChunk(id, payload, cached?.data);
                     renderRecents();
-                    showHomeStatus("Playlist loaded. Redirecting…", "success");
                     location.href = pageUrl;
                 }
                 catch (e) {
                     hideGlobalLoading();
                     console.error("Playlist could not be loaded", e);
-                    const msg = response?.status === 401
-                        ? "This playlist is private. Log in with Spotify to open it."
-                        : "Playlist could not be loaded. Please try again later.";
+                    const apiError = await readApiError(response);
+                    const msg = getPlaylistLoadErrorMessage(response, apiError, "Playlist could not be loaded. Please try again later.", "open");
                     showHomeStatus(msg, "error");
                 }
                 finally {
@@ -730,10 +739,8 @@ async function loadPlaylistAndNavigate(id, options = {}) {
     }
     catch (e) {
         hideGlobalLoading();
-        let msg = e instanceof Error ? e.message : String(e);
-        if (response?.status === 401) {
-            msg = "This playlist is private. Log in with Spotify to open it.";
-        }
+        const apiError = await readApiError(response);
+        const msg = getPlaylistLoadErrorMessage(response, apiError, e instanceof Error ? e.message : String(e), "open");
         showHomeStatus("Playlist could not be opened: " + msg, "error");
     }
 }

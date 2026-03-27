@@ -4,6 +4,7 @@
  */
 
 import { initCurationPanel } from "./curation.js";
+import { getPlaylistLoadErrorMessage, readApiError } from "./common/api-errors.js";
 import { buildCurationQueue, normalizeForSearch, primaryArtist } from "./common/playlist-utils.js";
 import { readCachedPlaylist, storePlaylistChunk } from "./storage.js";
 import { loadCustomVendors } from "./common/vendors.js";
@@ -39,6 +40,7 @@ let state = {
     selectedAlbums: null,
     albumSelectionComplete: false,
 };
+let playlistStatusTimer = null;
 function setupDiscogsDrawer() {
     const page = document.querySelector(".playlist-page");
     const toggle = document.getElementById("discogs-toggle");
@@ -68,7 +70,6 @@ function setupDiscogsDrawer() {
         if (open) {
             sidebarLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
             getFocusableInSidebar()[0]?.focus();
-            setPlaylistStatus("Discogs panel opened.");
         }
         else {
             sidebarLastFocus?.focus();
@@ -127,7 +128,11 @@ function setPlaylistStatus(message, tone = "neutral") {
     const node = document.getElementById("playlist-status");
     if (!node)
         return;
-    if (!message) {
+    if (playlistStatusTimer) {
+        clearTimeout(playlistStatusTimer);
+        playlistStatusTimer = null;
+    }
+    if (!message || tone === "neutral") {
         node.textContent = "";
         node.classList.add("hidden");
         node.classList.remove("error", "success");
@@ -140,6 +145,12 @@ function setPlaylistStatus(message, tone = "neutral") {
     }
     else if (tone === "success") {
         node.classList.add("success");
+        playlistStatusTimer = window.setTimeout(() => {
+            node.textContent = "";
+            node.classList.add("hidden");
+            node.classList.remove("error", "success");
+            playlistStatusTimer = null;
+        }, 2800);
     }
 }
 function registerPlaylistStatusEvents() {
@@ -297,7 +308,12 @@ function chunkQuery(id, offset, limit) {
 async function requestPlaylistChunk(id, offset, limit) {
     const response = await fetch(`/api/playlist?${chunkQuery(id, offset, limit).toString()}`, { cache: "no-cache" });
     if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const apiError = await readApiError(response);
+        const message = getPlaylistLoadErrorMessage(response, apiError, `HTTP ${response.status}`);
+        const error = new Error(message);
+        error.apiCode = apiError?.code ?? null;
+        error.httpStatus = response.status;
+        throw error;
     }
     return response.json();
 }
@@ -518,9 +534,7 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
             hideOverlay();
             
             // Auto-select all albums
-            showOverlay("Analyzing albums…");
             const selectedAlbums = await handleAlbumSelection(state.aggregated.tracks);
-            hideOverlay();
             
             if (selectedAlbums.length === 0) {
                 container.textContent = "No albums selected. Please select at least one album to continue.";
@@ -551,12 +565,12 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
                 }
             }
             prefetchNextChunk();
-            setPlaylistStatus(`Loaded ${filteredTracks.length} tracks.`, "success");
         }
     } catch (e) {
         console.error("Failed to load playlist:", e);
-        container.textContent = `Failed to load playlist: ${e instanceof Error ? e.message : String(e)}`;
-        setPlaylistStatus("Playlist could not be loaded.", "error");
+        const message = e instanceof Error ? e.message : String(e);
+        container.textContent = message;
+        setPlaylistStatus(message, "error");
     } finally {
         hideOverlay();
     }

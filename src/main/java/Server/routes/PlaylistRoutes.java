@@ -2,6 +2,7 @@ package Server.routes;
 
 import Server.PlaylistData;
 import Server.PlaylistSummary;
+import Server.SpotifyPlaylistAccessClassifier;
 import Server.UserPlaylistsResponse;
 import Server.cache.PlaylistCache;
 import Server.cache.PlaylistCacheKey;
@@ -122,9 +123,16 @@ public class PlaylistRoutes {
             PlaylistData playlistData = playlistCache.lookup(cacheKey);
             if (playlistData == null) {
                 ReceivingData rd = new ReceivingData(token, id, discogsService);
-                playlistData = rd.loadPlaylistData(offset, limit);
+                ReceivingData.PlaylistLoadResult loadResult = rd.loadPlaylistDataResult(offset, limit);
+                playlistData = loadResult.playlistData();
                 if (playlistData == null) {
                     playlistCache.remove(cacheKey);
+                    var classifiedError = SpotifyPlaylistAccessClassifier.classify(loadResult.error(), userAuthenticated);
+                    if (classifiedError.isPresent()) {
+                        var apiError = classifiedError.get();
+                        HttpUtils.sendApiError(exchange, apiError.status(), apiError.code(), apiError.message());
+                        return;
+                    }
                     if (!userAuthenticated) {
                         HttpUtils.sendApiError(exchange, 401, "spotify_login_required",
                                 "Playlist unavailable without Spotify login (private or collaborative)");

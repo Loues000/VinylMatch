@@ -15,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -94,7 +95,7 @@ class ApiServerIntegrationTest {
 
         assertEquals(401, resp.statusCode());
         ApiErrorResponse parsed = mapper.readValue(resp.body(), ApiErrorResponse.class);
-        assertEquals("spotify_login_required", parsed.error().code());
+        assertTrue(Set.of("spotify_login_required", "spotify_login_required_or_restricted").contains(parsed.error().code()));
     }
 
     @Test

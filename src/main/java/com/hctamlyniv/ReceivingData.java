@@ -49,7 +49,7 @@ public class ReceivingData {
      * Loads all playlist data without pagination limits.
      */
     public PlaylistData loadPlaylistData() {
-        return loadPlaylistData(0, -1);
+        return loadPlaylistDataResult(0, -1).playlistData();
     }
 
     /**
@@ -60,6 +60,10 @@ public class ReceivingData {
      * @return PlaylistData or null on error
      */
     public PlaylistData loadPlaylistData(int requestedOffset, int requestedLimit) {
+        return loadPlaylistDataResult(requestedOffset, requestedLimit).playlistData();
+    }
+
+    public PlaylistLoadResult loadPlaylistDataResult(int requestedOffset, int requestedLimit) {
         try {
             // 1. Get playlist metadata
             Playlist playlist = playlistReader.getPlaylist(playlistId);
@@ -78,18 +82,28 @@ public class ReceivingData {
             List<TrackData> tracks = playlistAssembler.assembleTrackData(playlistTracks, albumDetailsMap);
 
             // 5. Build final result
-            return playlistAssembler.assemblePlaylistData(
+            return PlaylistLoadResult.success(playlistAssembler.assemblePlaylistData(
                     metadata,
                     tracks,
                     itemsResult.total(),
                     itemsResult.offset(),
                     itemsResult.nextOffset(),
                     itemsResult.hasMore()
-            );
+            ));
 
         } catch (Exception e) {
             log.warn("Failed to load playlist data: {}", e.getMessage(), e);
-            return null;
+            return PlaylistLoadResult.failure(e);
+        }
+    }
+
+    public record PlaylistLoadResult(PlaylistData playlistData, Exception error) {
+        static PlaylistLoadResult success(PlaylistData playlistData) {
+            return new PlaylistLoadResult(playlistData, null);
+        }
+
+        static PlaylistLoadResult failure(Exception error) {
+            return new PlaylistLoadResult(null, error);
         }
     }
 }

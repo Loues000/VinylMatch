@@ -1,4 +1,5 @@
 import { injectHeader } from "./common/header.js";
+import { getPlaylistLoadErrorMessage, readApiError } from "./common/api-errors.js";
 import { buildCurationQueue, normalizeForSearch, primaryArtist } from "./common/playlist-utils.js";
 import { readCachedPlaylist, storePlaylistChunk } from "./storage.js";
 
@@ -20,6 +21,7 @@ const pageState = {
     curation: null,
     loading: false,
 };
+let curationStatusTimer = null;
 
 function safeDiscogsUrl(url) {
     try {
@@ -84,6 +86,38 @@ function resetCurationUi(container, message) {
         if (message)
             empty.textContent = message;
         empty.classList.remove("hidden");
+    }
+}
+
+function setCurationStatus(message, tone = "neutral") {
+    const node = document.getElementById("curation-status");
+    if (!node) {
+        return;
+    }
+    if (curationStatusTimer) {
+        clearTimeout(curationStatusTimer);
+        curationStatusTimer = null;
+    }
+    if (!message || tone === "neutral") {
+        node.textContent = "";
+        node.classList.add("hidden");
+        node.classList.remove("error", "success");
+        return;
+    }
+    node.textContent = message;
+    node.classList.remove("hidden", "error", "success");
+    if (tone === "error") {
+        node.classList.add("error");
+        return;
+    }
+    if (tone === "success") {
+        node.classList.add("success");
+        curationStatusTimer = window.setTimeout(() => {
+            node.textContent = "";
+            node.classList.add("hidden");
+            node.classList.remove("error", "success");
+            curationStatusTimer = null;
+        }, 2600);
     }
 }
 
@@ -348,7 +382,7 @@ async function selectCandidate(container, item, candidate, button, onCandidateSa
         setTimeout(() => (button.textContent = original), 1200);
     }
     catch (e) {
-        alert("Could not save link: " + (e instanceof Error ? e.message : String(e)));
+        setCurationStatus("Could not save link: " + (e instanceof Error ? e.message : String(e)), "error");
         button.textContent = original;
     }
     finally {
@@ -464,8 +498,10 @@ async function fetchPlaylist(id) {
     while (hasMore) {
         const query = new URLSearchParams({ id, offset: String(offset), limit: String(PAGE_SIZE) });
         const res = await fetch(`/api/playlist?${query.toString()}`, { cache: "no-cache" });
-        if (!res.ok)
-            throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+            const apiError = await readApiError(res);
+            throw new Error(getPlaylistLoadErrorMessage(res, apiError, `HTTP ${res.status}`));
+        }
         const payload = await res.json();
         aggregated = storePlaylistChunk(id, payload, aggregated ?? undefined);
         hasMore = !!aggregated?.hasMore;
@@ -505,21 +541,23 @@ async function loadPlaylistFromInput() {
     const textarea = document.getElementById("curation-playlist-url");
     const id = textarea ? getPlaylistIdFromUrl(textarea.value.trim()) : null;
     if (!id) {
-        alert("Invalid playlist URL.");
+        setCurationStatus("Please enter a valid Spotify playlist URL or ID.", "error");
         return;
     }
     console.info("Starting playlist load", { playlistId: id });
     pageState.loading = true;
+    setCurationStatus("");
     showLoading("Loading…");
     try {
         pageState.id = id;
         pageState.aggregated = await fetchPlaylist(id);
         updateSummary();
         pageState.curation?.refreshQueue();
+        setCurationStatus("Playlist loaded.", "success");
     }
     catch (e) {
         console.error("Playlist could not be loaded", e);
-        alert("Playlist load failed.");
+        setCurationStatus(e instanceof Error ? e.message : "Playlist load failed.", "error");
     }
     finally {
         hideLoading();
