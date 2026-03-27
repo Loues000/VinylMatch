@@ -20,8 +20,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -42,7 +44,7 @@ public class ApiServer {
     }
 
     public static HttpServer start(int port) throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+        HttpServer server = HttpServer.create(createBindAddress(port), 0);
         int actualPort = server.getAddress().getPort();
 
         // Initialize shared components
@@ -86,6 +88,14 @@ public class ApiServer {
         log.info("Server running on http://{}:{}/", host, actualPort);
         log.info("Spotify redirect URI: {}", redirectUri);
         return server;
+    }
+
+    static InetSocketAddress createBindAddress(int port) {
+        try {
+            return new InetSocketAddress(InetAddress.getByAddress(new byte[]{0, 0, 0, 0}), port);
+        } catch (UnknownHostException e) {
+            throw new IllegalStateException("Failed to create IPv4 wildcard bind address", e);
+        }
     }
 
     private static Path resolveFrontendBase() {

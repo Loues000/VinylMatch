@@ -4,7 +4,7 @@
     "builder": "RAILPACK"
   },
   "deploy": {
-    "startCommand": "java -jar target/VinylMatch.jar",
+    "startCommand": "java -Djava.net.preferIPv4Stack=true -jar target/VinylMatch.jar",
     "healthcheckPath": "/api/health/simple",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
