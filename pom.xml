@@ -202,6 +202,8 @@
                 <artifactId>dependency-check-maven</artifactId>
                 <version>9.0.9</version>
                 <configuration>
+                    <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                    <failOnError>false</failOnError>
                     <failBuildOnCVSS>7</failBuildOnCVSS>
                     <suppressionFiles>
                         <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
@@ -221,4 +223,13 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>production</id>
+            <properties>
+                <vinylmatch.environment>production</vinylmatch.environment>
+            </properties>
+        </profile>
+    </profiles>
 </project>

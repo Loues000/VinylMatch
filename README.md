@@ -122,6 +122,8 @@ Railway is a good fit for VinylMatch because the app already runs as a single Ja
 - `railway.json` starts the app with `java -jar target/VinylMatch.jar`.
 - Railway should use `/api/health/simple` as the health check path.
 - Railway injects `PORT`; the app already reads this environment variable.
+- The Maven build path for Railway should be `mvn -B -DskipTests clean package`.
+- Avoid legacy dashboard overrides like `dependency:list install -Pproduction`; they add work without changing the packaged JAR.
 
 #### Railway Environment Variables
 
@@ -129,6 +131,7 @@ Set these in the Railway app service:
 
 | Variable | Required | Railway note |
 |----------|----------|-------------|
+| `NVD_API_KEY` | Recommended | Free NVD API key for OWASP Dependency-Check; prevents shared-CI rate-limit failures |
 | `SPOTIFY_CLIENT_ID` | Yes | From Spotify Developer Dashboard |
 | `SPOTIFY_CLIENT_SECRET` | Yes | From Spotify Developer Dashboard |
 | `SPOTIFY_REDIRECT_URI` | Yes | Set to `https://your-domain/api/auth/callback` |
@@ -141,6 +144,8 @@ Set these in the Railway app service:
 | `REDIS_PASSWORD` | Recommended | Map from Railway Redis password |
 
 If Railway exposes Redis through reference variables instead of fixed names, map them into the app's expected variables `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`.
+
+`pom.xml` already wires `NVD_API_KEY` into `dependency-check-maven`. If the NVD feed still returns a transient error, the build now continues instead of failing the whole deploy, but Railway should still set the API key for reliable vulnerability updates.
 
 #### Domain and Spotify OAuth
 
