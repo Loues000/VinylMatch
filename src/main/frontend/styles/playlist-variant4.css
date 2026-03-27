@@ -192,12 +192,12 @@ body {
 .status-message {
     font-size: clamp(12px, 1.4vw, 13px);
     color: var(--playlist-muted);
-    border-left: 3px solid #0066ff;
-    padding-left: 12px;
+    border-left: none;
+    padding-left: 0;
 }
 
 :root[data-theme="dark"] .status-message {
-    border-left-color: #00ccff;
+    color: var(--playlist-muted);
 }
 
 /* Tracks container */
@@ -234,7 +234,7 @@ body {
 }
 
 .playlist-tracks .track[data-match-quality="medium"] {
-    border-left: clamp(4px, 0.8vw, 6px) solid #f39c12;
+    border-left: clamp(4px, 0.8vw, 6px) solid var(--playlist-muted);
 }
 
 .playlist-tracks .track[data-match-quality="poor"] {
@@ -344,9 +344,9 @@ body {
 }
 
 .match-quality--medium {
-    background: #f39c12;
-    color: #0a0a0a;
-    border-color: #f39c12;
+    background: var(--playlist-bg);
+    color: var(--playlist-text);
+    border-color: var(--playlist-border);
 }
 
 .match-quality--poor {
@@ -365,16 +365,14 @@ body {
 .discogs-library {
     display: inline-flex;
     align-items: center;
-    padding: clamp(3px, 0.8vh, 5px) clamp(8px, 1.5vw, 12px);
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
     border: clamp(2px, 0.4vw, 3px) solid var(--playlist-border);
     border-radius: 0;
     background: var(--playlist-bg);
     color: var(--playlist-text);
-    font-size: clamp(9px, 1.2vw, 11px);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
 }
 
 .discogs-library.wishlist {
@@ -387,6 +385,24 @@ body {
     background: #2a5f4d;
     border-color: #2a5f4d;
     color: #ffffff;
+}
+
+.discogs-library .vm-library-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+.discogs-library .vm-library-icon--dark {
+    display: none;
+}
+
+:root[data-theme="dark"] .discogs-library .vm-library-icon--light {
+    display: none;
+}
+
+:root[data-theme="dark"] .discogs-library .vm-library-icon--dark {
+    display: block;
 }
 
 :root[data-theme="dark"] .discogs-library.wishlist {
@@ -413,12 +429,18 @@ body {
         border-color: #79dba1;
         color: #0a0a0a;
     }
+
+    :root:not([data-theme]) .discogs-library .vm-library-icon--light {
+        display: none;
+    }
+
+    :root:not([data-theme]) .discogs-library .vm-library-icon--dark {
+        display: block;
+    }
 }
 
 .playlist-tracks[data-view-mode="grid"] .track .discogs-library {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex: 0 0 32px;
 }
 
 /* Load more button */

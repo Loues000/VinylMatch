@@ -52,7 +52,86 @@ function escapeRegExp(value) {
 
 function normalizeLibraryValue(value) {
     if (!value) return "";
-    return normalizeForSearch(value).trim().toLowerCase();
+    return normalizeForSearch(value)
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function normalizeLibraryArtist(value) {
+    const normalized = normalizeLibraryValue(primaryArtist(value) || value);
+    if (!normalized) return "";
+    return normalized
+        .replace(/\b(?:feat|featuring|ft|with|x)\b.*$/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function normalizeLibraryAlbum(value) {
+    const normalized = normalizeLibraryValue(value);
+    if (!normalized) return "";
+    return normalized
+        .replace(/\b(?:remaster|remastered|deluxe|expanded|anniversary|edition|remix|reissue|bonus|version|explicit)\b.*$/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function normalizeAlbumVariants(value) {
+    const base = normalizeLibraryAlbum(value);
+    if (!base) return [];
+    const variants = new Set([base]);
+    const withoutLeadingArticle = base.replace(/^(?:the|a|an)\s+/i, "").trim();
+    if (withoutLeadingArticle && withoutLeadingArticle !== base) {
+        variants.add(withoutLeadingArticle);
+    }
+    return [...variants];
+}
+
+function buildArtistAlbumKeys(artist, album) {
+    const normalizedArtist = normalizeLibraryArtist(artist);
+    if (!normalizedArtist) {
+        return [];
+    }
+    const albumVariants = normalizeAlbumVariants(album);
+    if (!albumVariants.length) {
+        return [];
+    }
+    return albumVariants.map((candidate) => `${normalizedArtist}|${candidate}`);
+}
+
+function tokenizeAlbumForFuzzyMatch(value) {
+    if (!value) return [];
+    return value
+        .split(" ")
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 3);
+}
+
+function fuzzyAlbumScore(left, right) {
+    const leftTokens = tokenizeAlbumForFuzzyMatch(left);
+    const rightTokens = tokenizeAlbumForFuzzyMatch(right);
+    if (leftTokens.length < 2 || rightTokens.length < 2) {
+        return 0;
+    }
+    const rightSet = new Set(rightTokens);
+    let intersection = 0;
+    for (const token of leftTokens) {
+        if (rightSet.has(token)) {
+            intersection += 1;
+        }
+    }
+    const denominator = Math.max(leftTokens.length, rightTokens.length);
+    if (denominator === 0) {
+        return 0;
+    }
+    return intersection / denominator;
+}
+
+function getResolvedStatePriority(state) {
+    if (state === LIBRARY_STATE_OWNED) return 2;
+    if (state === LIBRARY_STATE_WISHLIST) return 1;
+    return 0;
 }
 
 function stripArtistPrefixFromTitle(title, artist) {
@@ -66,12 +145,8 @@ function stripArtistPrefixFromTitle(title, artist) {
 }
 
 function buildArtistAlbumKey(artist, album) {
-    const normalizedArtist = normalizeLibraryValue(primaryArtist(artist) || artist);
-    const normalizedAlbum = normalizeLibraryValue(album);
-    if (!normalizedArtist || !normalizedAlbum) {
-        return null;
-    }
-    return `${normalizedArtist}|${normalizedAlbum}`;
+    const keys = buildArtistAlbumKeys(artist, album);
+    return keys.length ? keys[0] : null;
 }
 
 function buildWishlistEntryKey(entry) {
@@ -80,6 +155,57 @@ function buildWishlistEntryKey(entry) {
     const rawTitle = typeof entry.title === "string" ? entry.title : "";
     const album = stripArtistPrefixFromTitle(rawTitle, artist) || rawTitle;
     return buildArtistAlbumKey(artist, album);
+}
+
+function resolveCachedLibraryState(artist, album) {
+    const keys = buildArtistAlbumKeys(artist, album);
+    for (const key of keys) {
+        const state = getCachedLibraryStateByKey(key);
+        if (state) {
+            return state;
+        }
+    }
+    if (!keys.length) {
+        return null;
+    }
+    const [baseKey] = keys;
+    const splitIndex = baseKey.indexOf("|");
+    if (splitIndex <= 0 || splitIndex >= baseKey.length - 1) {
+        return null;
+    }
+    const targetArtist = baseKey.slice(0, splitIndex);
+    const targetAlbum = baseKey.slice(splitIndex + 1);
+    if (!targetArtist || !targetAlbum) {
+        return null;
+    }
+    let bestState = null;
+    let bestScore = 0;
+    for (const [cacheKey] of discogsUiState.libraryKeyCache.entries()) {
+        const state = getCachedLibraryStateByKey(cacheKey);
+        if (!state || state === LIBRARY_STATE_NONE) {
+            continue;
+        }
+        const divider = cacheKey.indexOf("|");
+        if (divider <= 0 || divider >= cacheKey.length - 1) {
+            continue;
+        }
+        const cacheArtist = cacheKey.slice(0, divider);
+        if (cacheArtist !== targetArtist) {
+            continue;
+        }
+        const cacheAlbum = cacheKey.slice(divider + 1);
+        const score = fuzzyAlbumScore(targetAlbum, cacheAlbum);
+        if (score < 0.74) {
+            continue;
+        }
+        const nextPriority = getResolvedStatePriority(state);
+        const currentPriority = getResolvedStatePriority(bestState);
+        if (score > bestScore || (score === bestScore && nextPriority > currentPriority)) {
+            bestScore = score;
+            bestState = state;
+        }
+    }
+    return bestState;
 }
 
 function persistLibraryCache() {
@@ -195,13 +321,18 @@ function cacheWishlistEntries(entries) {
     if (!Array.isArray(entries)) return;
     let changed = false;
     for (const item of entries) {
-        const key = buildWishlistEntryKey(item);
-        if (!key) continue;
-        const existing = getCachedLibraryStateByKey(key);
-        if (existing === LIBRARY_STATE_OWNED) {
-            continue;
+        const artist = typeof item?.artist === "string" ? item.artist : "";
+        const rawTitle = typeof item?.title === "string" ? item.title : "";
+        const album = stripArtistPrefixFromTitle(rawTitle, artist) || rawTitle;
+        const keys = buildArtistAlbumKeys(artist, album);
+        if (!keys.length) continue;
+        for (const key of keys) {
+            const existing = getCachedLibraryStateByKey(key);
+            if (existing === LIBRARY_STATE_OWNED) {
+                continue;
+            }
+            changed = setCachedLibraryStateByKey(key, LIBRARY_STATE_WISHLIST) || changed;
         }
-        changed = setCachedLibraryStateByKey(key, LIBRARY_STATE_WISHLIST) || changed;
     }
     if (changed) {
         persistLibraryCache();
@@ -209,12 +340,15 @@ function cacheWishlistEntries(entries) {
 }
 
 export function rememberLibraryState(artist, album, state) {
-    const key = buildArtistAlbumKey(artist, album);
-    if (!key) return;
+    const keys = buildArtistAlbumKeys(artist, album);
+    if (!keys.length) return;
     const nextState = state === LIBRARY_STATE_OWNED ? LIBRARY_STATE_OWNED
         : state === LIBRARY_STATE_WISHLIST ? LIBRARY_STATE_WISHLIST
             : LIBRARY_STATE_NONE;
-    const changed = setCachedLibraryStateByKey(key, nextState);
+    let changed = false;
+    for (const key of keys) {
+        changed = setCachedLibraryStateByKey(key, nextState) || changed;
+    }
     if (changed) {
         persistLibraryCache();
     }
@@ -814,8 +948,7 @@ export async function refreshLibraryStatuses(state) {
         if (!track || typeof track.discogsAlbumUrl !== "string") continue;
         const safeUrl = safeDiscogsUrl(track.discogsAlbumUrl);
         if (!safeUrl) continue;
-        const key = buildArtistAlbumKey(track.artist, track.album);
-        const cachedState = key ? getCachedLibraryStateByKey(key) : null;
+        const cachedState = resolveCachedLibraryState(track.artist, track.album);
         if (cachedState && cachedState !== LIBRARY_STATE_WISHLIST) continue;
         unresolvedUrls.push(safeUrl);
     }
@@ -896,8 +1029,8 @@ export function refreshLibraryBadgesLocally(flagMap, state) {
             if (artistAlbumKey) {
                 cacheChanged = setCachedLibraryStateByKey(artistAlbumKey, resolvedState) || cacheChanged;
             }
-        } else if (artistAlbumKey) {
-            resolvedState = getCachedLibraryStateByKey(artistAlbumKey);
+        } else {
+            resolvedState = resolveCachedLibraryState(track.artist, track.album);
         }
 
         if (resolvedState === LIBRARY_STATE_OWNED) {

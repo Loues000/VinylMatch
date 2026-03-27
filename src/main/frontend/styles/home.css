@@ -263,13 +263,12 @@ body::after {
 
 .sidebar {
     position: fixed;
-    top: 64px;
+    top: 56px;
     left: 0;
     bottom: 0;
     width: var(--vm-home-sidebar-width);
     overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: 14px 12px 20px;
+    padding: 10px 12px 16px;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -591,6 +590,10 @@ body::after {
     font-size: 16px;
     color: var(--home-muted);
     max-width: 60ch;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
 }
 
 .paste-panel {
@@ -1352,7 +1355,7 @@ body::after {
 }
 
 .hero-logo-wrap::after {
-    content: "v0.9";
+    content: "v1.0";
     position: absolute;
     top: -1px;
     right: -1px;
@@ -1398,6 +1401,10 @@ body::after {
     line-height: 1.4;
     color: var(--home-text);
     max-width: 50ch;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
 }
 
 .paste-panel {
@@ -1563,6 +1570,10 @@ body::after {
 
     .help {
         line-height: 1.45;
+    }
+
+    .hero-lede {
+        -webkit-line-clamp: 4;
     }
 
     .actions {

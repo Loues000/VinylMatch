@@ -31,10 +31,11 @@
 
 <main class="curation-page" id="curation-page">
     <section class="curation-hero">
-        <div>
+        <div class="curation-hero__title">
             <h1>Curation Console</h1>
+            <p class="curation-hero-note">Admin-only workspace for manual match curation.</p>
         </div>
-        <div class="hero-badge">DEV ONLY</div>
+        <div class="hero-badge">DEV WORKBENCH</div>
     </section>
 
     <section class="curation-intro">
@@ -49,6 +50,7 @@
                     <button class="btn" id="curation-use-link" type="button">Load</button>
                 </div>
             </div>
+            <p id="curation-status" class="curation-status hidden" role="status" aria-live="polite"></p>
         </div>
     </section>
 

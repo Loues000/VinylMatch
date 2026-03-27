@@ -211,40 +211,38 @@ body {
 
 /* Match quality visual indicators on track borders */
 .playlist-tracks .track[data-match-quality="good"] {
-    border-left: 4px solid var(--accent);
-    background: linear-gradient(90deg, rgba(29, 185, 84, 0.05) 0%, var(--bg-card) 100%);
+    border-left: 3px solid var(--accent);
+    /* no gradient */
 }
 
-.playlist-tracks .track[data-match-quality="good"]::before {
-    content: "✓";
-    position: absolute;
-    left: 4px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 20px;
-    height: 20px;
-    background: var(--accent);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: bold;
-}
+/* Removed: .playlist-tracks .track[data-match-quality="good"]::before */
+/*     content: "✓"; */
+/*     position: absolute; */
+/*     left: 4px; */
+/*     top: 50%; */
+/*     transform: translateY(-50%); */
+/*     width: 20px; */
+/*     height: 20px; */
+/*     background: var(--accent); */
+/*     color: white; */
+/*     border-radius: 50%; */
+/*     display: flex; */
+/*     align-items: center; */
+/*     justify-content: center; */
+/*     font-size: 12px; */
+/*     font-weight: bold; */
 
 .playlist-tracks .track[data-match-quality="medium"] {
-    border-left: 4px solid #f39c12;
-    background: linear-gradient(90deg, rgba(243, 156, 18, 0.05) 0%, var(--bg-card) 100%);
+    border-left: 3px solid var(--border-subtle);
 }
 
 .playlist-tracks .track[data-match-quality="poor"] {
-    border-left: 4px solid #e74c3c;
+    border-left: 3px solid #e74c3c;
     opacity: 0.85;
 }
 
 .playlist-tracks .track[data-match-quality="pending"] {
-    border-left: 4px solid var(--border-default);
+    border-left: 3px solid var(--border-default);
 }
 
 .track img.cover {
@@ -445,20 +443,17 @@ body {
 
 .match-quality--good::before {
     content: "✓";
-    font-weight: bold;
+/*     font-weight: bold; */
     margin-right: 2px;
 }
 
 .match-quality--medium {
-    background: #f39c12;
-    color: white;
-    border-color: #f39c12;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border-color: var(--border-subtle);
 }
-
 .match-quality--medium::before {
-    content: "~";
-    font-weight: bold;
-    margin-right: 2px;
+    content: none;
 }
 
 .match-quality--pending {
@@ -487,21 +482,21 @@ body {
 
 .match-quality--poor::before {
     content: "✕";
-    font-weight: bold;
+/*     font-weight: bold; */
     margin-right: 2px;
 }
 
 .discogs-library {
     display: inline-flex;
     align-items: center;
-    padding: 4px 8px;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
     border-radius: var(--radius-full);
     border: 1px solid var(--border-default);
     background: var(--bg-secondary);
     color: var(--text-secondary);
-    font-size: 11px;
-    font-weight: 700;
-    white-space: nowrap;
 }
 
 .discogs-library.wishlist {
@@ -514,6 +509,22 @@ body {
     background: rgba(31, 122, 63, 0.16);
     border-color: rgba(31, 122, 63, 0.42);
     color: #18572f;
+}
+.discogs-library .vm-library-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+.discogs-library .vm-library-icon--dark {
+    display: none;
+}
+
+:root[data-theme="dark"] .discogs-library .vm-library-icon--light {
+    display: none;
+}
+
+:root[data-theme="dark"] .discogs-library .vm-library-icon--dark {
+    display: block;
 }
 
 :root[data-theme="dark"] .discogs-library.wishlist {
@@ -539,6 +550,14 @@ body {
         background: rgba(121, 219, 161, 0.2);
         border-color: rgba(121, 219, 161, 0.52);
         color: #d8ffe7;
+    }
+
+    :root:not([data-theme]) .discogs-library .vm-library-icon--light {
+        display: none;
+    }
+
+    :root:not([data-theme]) .discogs-library .vm-library-icon--dark {
+        display: block;
     }
 }
 
@@ -576,6 +595,7 @@ body {
     width: 100%;
     justify-content: center;
     flex-wrap: nowrap;
+    align-items: stretch;
     gap: var(--vm-grid-action-gap);
 }
 
@@ -612,15 +632,13 @@ body {
 
 .playlist-tracks[data-view-mode="grid"] .track .meta-row {
     margin-top: auto;
-    min-height: 20px;
-    align-items: flex-start;
-    align-content: flex-start;
+    min-height: 30px;
+    align-items: center;
+    align-content: center;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track .discogs-library {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex: 0 0 30px;
 }
 
 .playlist-tracks[data-view-mode="grid"] .track .discogs-action,
