@@ -39,6 +39,7 @@ class ConfigInternalTest {
                         SPOTIFY_CLIENT_ID="my-id"
                         SPOTIFY_CLIENT_SECRET='my-secret'
                         DISCOGS_TOKEN=token
+                        VINYLMATCH_MASTER_KEY=master-key-from-env
                         PORT=9999
                         UNKNOWN_KEY=ignored
                         """,
@@ -51,6 +52,7 @@ class ConfigInternalTest {
         assertEquals("my-id", Config.getSpotifyClientId());
         assertEquals("my-secret", Config.getSpotifyClientSecret());
         assertEquals("token", Config.getDiscogsToken());
+        assertEquals("master-key-from-env", Config.getMasterKey());
         assertEquals(9999, Config.getPort());
     }
 

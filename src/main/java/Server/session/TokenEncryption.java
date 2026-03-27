@@ -1,5 +1,9 @@
 package Server.session;
 
+import com.hctamlyniv.Config;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -17,34 +21,40 @@ import java.util.Base64;
  * For production, set VINYLMATCH_MASTER_KEY to a secure random string (min 32 chars).
  */
 public class TokenEncryption {
-    
+
+    private static final Logger log = LoggerFactory.getLogger(TokenEncryption.class);
     private static final String ALGORITHM = "AES/GCM/NoPadding";
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128;
-    
+    private static final String DEVELOPMENT_FALLBACK_MASTER_KEY = "DEV_KEY_DO_NOT_USE_IN_PRODUCTION_VINYLMATCH";
+    private static volatile boolean fallbackWarningLogged = false;
+
     private final SecretKeySpec keySpec;
-    
+
     public TokenEncryption() {
         this(getMasterKey());
     }
-    
+
     TokenEncryption(String masterKey) {
         byte[] keyBytes = deriveKey(masterKey);
         this.keySpec = new SecretKeySpec(keyBytes, "AES");
     }
     
     /**
-     * Get master key from environment or system property.
-     * Falls back to a development key (NOT for production!)
+     * Get master key from centralized config or a JVM system property.
+     * Falls back to a stable development key (NOT for production!).
      */
     private static String getMasterKey() {
-        String key = System.getenv("VINYLMATCH_MASTER_KEY");
+        String key = Config.getMasterKey();
         if (key == null || key.isBlank()) {
             key = System.getProperty("vinylmatch.master.key");
         }
         if (key == null || key.isBlank()) {
-            // Fallback for development only - logs warning
-            return "DEV_KEY_DO_NOT_USE_IN_PRODUCTION_VINYL_" + System.currentTimeMillis();
+            if (!fallbackWarningLogged) {
+                fallbackWarningLogged = true;
+                log.warn("VINYLMATCH_MASTER_KEY is not configured; using a stable development fallback key. Configure a real key for production.");
+            }
+            return DEVELOPMENT_FALLBACK_MASTER_KEY;
         }
         return key;
     }

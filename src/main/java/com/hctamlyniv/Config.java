@@ -59,6 +59,7 @@ public final class Config {
             "REDIS_PORT",
             "REDIS_PASSWORD",
             "SESSION_TTL_DAYS",
+            "VINYLMATCH_MASTER_KEY",
             "LOG_LEVEL",
             "SENTRY_DSN",
             "ENVIRONMENT",
@@ -308,6 +309,10 @@ public final class Config {
         } catch (NumberFormatException e) {
             return 30;
         }
+    }
+
+    public static String getMasterKey() {
+        return get("VINYLMATCH_MASTER_KEY");
     }
 
     // =========================================================================
