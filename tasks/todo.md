@@ -14,6 +14,7 @@
 - Fresh-browser runtime verification showed the current source tree boot path was healthy: header injection worked, the home sidebar opened, and the paste button triggered `/api/playlist` as expected.
 - `src/main/java/Server/http/StaticFileHandler.java` now sends `Cache-Control: no-cache, max-age=0, must-revalidate` for `.html`, `.js`, and `.css` assets so browsers revalidate mutable frontend files instead of hanging onto a stale broken bundle.
 - `src/test/java/Server/http/StaticFileHandlerTest.java` now covers the new cache-policy behavior for JS assets.
+- Railway follow-up: the deploy still failed because `src/main/frontend/dist/common/api-errors.js` existed only as a local untracked file. It was present in local `target/frontend` builds from the dirty workspace, but absent from Git-based Railway builds, which caused the browser to 404 the module import and abort `main.js`.
 - Proof of work:
   - `node tasks/tmp-playwright-check.cjs`
   - `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd -Dtest=StaticFileHandlerTest test`

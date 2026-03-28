@@ -59,6 +59,8 @@ skills-lock.json
 # Frontend build output
 src/main/frontend/bin/
 dist/
+!src/main/frontend/dist/
+!src/main/frontend/dist/**
 
 # Runtime cache (generated)
 cache/
@@ -86,7 +88,6 @@ project_structure.txt
 docs/
 
 # Local task/workspace files (AI workspace)
-tasks/
 AGENTS.md
 CLAUDE.md
 

@@ -2,6 +2,7 @@
 
 ## 2026-03-28
 - When a frontend boot regression appears to affect all JS-driven interactions, verify it once in a fresh browser profile before changing app code; if the source tree works there, suspect stale cached static assets and harden cache headers or asset versioning instead of chasing a nonexistent runtime bug.
+- For checked-in frontend `dist/` assets, verify every imported module is actually tracked with `git ls-files`; local builds can mask missing Git assets because untracked files still get copied into `target/frontend`, while clean CI/deploy checkouts will 404 those modules at runtime.
 
 ## 2026-03-27
 - For CI-hosted OWASP Dependency-Check runs, always wire the NVD API key from environment config and set a non-fatal update fallback; shared builder IPs get rate-limited often enough that unauthenticated NVD refreshes are not a reliable deploy gate.
