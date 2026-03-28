@@ -75,6 +75,18 @@ class StaticFileHandlerTest {
     }
 
     @Test
+    void disablesCachingForMutableFrontendAssets() throws Exception {
+        Files.writeString(tempDir.resolve("app.js"), "console.log('ok');", StandardCharsets.UTF_8);
+        StaticFileHandler handler = new StaticFileHandler(tempDir, "index.html", 1234, null);
+
+        FakeExchange ex = new FakeExchange("GET", URI.create("http://127.0.0.1/app.js"));
+        handler.handle(ex);
+
+        assertEquals(200, ex.getResponseCode());
+        assertEquals("no-cache, max-age=0, must-revalidate", ex.getResponseHeaders().getFirst("Cache-Control"));
+    }
+
+    @Test
     void redirectsToCanonicalLoopbackHostWhenConfigured() throws Exception {
         Files.writeString(tempDir.resolve("index.html"), "ok", StandardCharsets.UTF_8);
         StaticFileHandler handler = new StaticFileHandler(

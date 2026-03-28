@@ -84,6 +84,7 @@ public class StaticFileHandler implements HttpHandler {
 
             byte[] bytes = Files.readAllBytes(file);
             exchange.getResponseHeaders().add("Content-Type", contentTypeFor(file));
+            applyCacheHeaders(exchange, file);
             exchange.sendResponseHeaders(200, bytes.length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(bytes);
@@ -152,5 +153,12 @@ public class StaticFileHandler implements HttpHandler {
         if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
         if (name.endsWith(".svg")) return "image/svg+xml";
         return "application/octet-stream";
+    }
+
+    private static void applyCacheHeaders(HttpExchange exchange, Path file) {
+        String name = file.getFileName().toString().toLowerCase();
+        if (name.endsWith(".html") || name.endsWith(".js") || name.endsWith(".css")) {
+            exchange.getResponseHeaders().set("Cache-Control", "no-cache, max-age=0, must-revalidate");
+        }
     }
 }

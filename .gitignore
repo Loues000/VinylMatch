@@ -50,9 +50,11 @@ desktop.ini
 *.zip
 
 # IDE-Dateien
+.agents/
+.claude/
 .qodo/
 .cursor/
-.github/
+skills-lock.json
 
 # Frontend build output
 src/main/frontend/bin/
