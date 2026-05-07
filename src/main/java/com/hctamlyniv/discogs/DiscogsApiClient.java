@@ -40,6 +40,7 @@ public class DiscogsApiClient {
     // Library-status caching: these endpoints are expensive and often called repeatedly
     // (playlist load, focus events, drawer refreshes). Keep a short TTL to reduce API load.
     private static final long LIBRARY_IDS_CACHE_TTL_MS = 20_000L;
+    private static final int LIBRARY_IDS_MAX_PAGES = 3;
     private final Object wishlistIdsCacheLock = new Object();
     private volatile String wishlistIdsCacheUsername;
     private volatile int wishlistIdsCachePerPage;
@@ -360,42 +361,20 @@ public class DiscogsApiClient {
                 return new HashSet<>(cached);
             }
 
-            Set<Integer> ids = new HashSet<>();
             try {
-                String qs = "?sort=added&sort_order=desc&page=1&per_page=" + safePerPage;
-                URI uri = URI.create(apiBase + "/users/" + DiscogsUrlUtils.urlEncode(username) + "/wants" + qs);
-                HttpRequest req = baseRequest(uri)
-                        .timeout(Duration.ofSeconds(12))
-                        .GET()
-                        .build();
-                HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-                int status = resp.statusCode();
-                if (status == 200) {
-                    JsonNode root = mapper.readTree(resp.body());
-                    JsonNode wants = root.get("wants");
-                    if (wants != null && wants.isArray()) {
-                        for (JsonNode item : wants) {
-                            JsonNode basic = item.get("basic_information");
-                            if (basic != null && basic.hasNonNull("id")) {
-                                ids.add(basic.get("id").asInt());
-                            }
-                        }
-                    }
-
-                    wishlistIdsCacheUsername = username;
-                    wishlistIdsCachePerPage = safePerPage;
-                    wishlistIdsCache = Set.copyOf(ids);
-                    wishlistIdsCacheAtMillis = System.currentTimeMillis();
-                    return ids;
-                }
-
-                // If Discogs is transiently unavailable, prefer returning the last known snapshot.
-                if ((status == 429 || status >= 500) && cached != null
-                        && username.equals(wishlistIdsCacheUsername)
-                        && safePerPage == wishlistIdsCachePerPage) {
-                    return new HashSet<>(cached);
-                }
-            } catch (Exception ignored) {
+                Set<Integer> ids = fetchPagedReleaseIds(
+                        safePerPage,
+                        "/users/" + DiscogsUrlUtils.urlEncode(username) + "/wants",
+                        "wants"
+                );
+                wishlistIdsCacheUsername = username;
+                wishlistIdsCachePerPage = safePerPage;
+                wishlistIdsCache = Set.copyOf(ids);
+                wishlistIdsCacheAtMillis = System.currentTimeMillis();
+                return ids;
+            } catch (Exception e) {
+                log.debug("Discogs wishlist ID fetch failed: {}", e.getMessage());
+                // If Discogs is unavailable, prefer returning the last known snapshot.
                 if (cached != null
                         && username.equals(wishlistIdsCacheUsername)
                         && safePerPage == wishlistIdsCachePerPage) {
@@ -403,7 +382,7 @@ public class DiscogsApiClient {
                 }
             }
 
-            return ids;
+            return Set.of();
         }
     }
 
@@ -433,40 +412,19 @@ public class DiscogsApiClient {
                 return new HashSet<>(cached);
             }
 
-            Set<Integer> ids = new HashSet<>();
             try {
-                String qs = "?sort=added&sort_order=desc&page=1&per_page=" + safePerPage;
-                URI uri = URI.create(apiBase + "/users/" + DiscogsUrlUtils.urlEncode(username) + "/collection/folders/0/releases" + qs);
-                HttpRequest req = baseRequest(uri)
-                        .timeout(Duration.ofSeconds(12))
-                        .GET()
-                        .build();
-                HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-                int status = resp.statusCode();
-                if (status == 200) {
-                    JsonNode root = mapper.readTree(resp.body());
-                    JsonNode releases = root.get("releases");
-                    if (releases != null && releases.isArray()) {
-                        for (JsonNode item : releases) {
-                            if (item.hasNonNull("id")) {
-                                ids.add(item.get("id").asInt());
-                            }
-                        }
-                    }
-
-                    collectionIdsCacheUsername = username;
-                    collectionIdsCachePerPage = safePerPage;
-                    collectionIdsCache = Set.copyOf(ids);
-                    collectionIdsCacheAtMillis = System.currentTimeMillis();
-                    return ids;
-                }
-
-                if ((status == 429 || status >= 500) && cached != null
-                        && username.equals(collectionIdsCacheUsername)
-                        && safePerPage == collectionIdsCachePerPage) {
-                    return new HashSet<>(cached);
-                }
-            } catch (Exception ignored) {
+                Set<Integer> ids = fetchPagedReleaseIds(
+                        safePerPage,
+                        "/users/" + DiscogsUrlUtils.urlEncode(username) + "/collection/folders/0/releases",
+                        "releases"
+                );
+                collectionIdsCacheUsername = username;
+                collectionIdsCachePerPage = safePerPage;
+                collectionIdsCache = Set.copyOf(ids);
+                collectionIdsCacheAtMillis = System.currentTimeMillis();
+                return ids;
+            } catch (Exception e) {
+                log.debug("Discogs collection ID fetch failed: {}", e.getMessage());
                 if (cached != null
                         && username.equals(collectionIdsCacheUsername)
                         && safePerPage == collectionIdsCachePerPage) {
@@ -474,8 +432,55 @@ public class DiscogsApiClient {
                 }
             }
 
-            return ids;
+            return Set.of();
         }
+    }
+
+    private Set<Integer> fetchPagedReleaseIds(int safePerPage, String path, String arrayField)
+            throws IOException, InterruptedException {
+        Set<Integer> ids = new HashSet<>();
+        int pagesToFetch = 1;
+        for (int page = 1; page <= pagesToFetch && page <= LIBRARY_IDS_MAX_PAGES; page++) {
+            String qs = "?sort=added&sort_order=desc&page=" + page + "&per_page=" + safePerPage;
+            URI uri = URI.create(apiBase + path + qs);
+            HttpRequest req = baseRequest(uri)
+                    .timeout(Duration.ofSeconds(12))
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            int status = resp.statusCode();
+            if (status != 200) {
+                throwTransientIfNeeded(status);
+                break;
+            }
+
+            JsonNode root = mapper.readTree(resp.body());
+            if (page == 1) {
+                pagesToFetch = Math.max(1, Math.min(LIBRARY_IDS_MAX_PAGES, root.path("pagination").path("pages").asInt(1)));
+            }
+            Set<Integer> pageIds = parseLibraryReleaseIds(root, arrayField);
+            if (pageIds.isEmpty()) {
+                break;
+            }
+            ids.addAll(pageIds);
+        }
+        return ids;
+    }
+
+    private Set<Integer> parseLibraryReleaseIds(JsonNode root, String arrayField) {
+        JsonNode rows = root.get(arrayField);
+        if (rows == null || !rows.isArray()) {
+            return Set.of();
+        }
+
+        Set<Integer> ids = new HashSet<>();
+        for (JsonNode item : rows) {
+            JsonNode idNode = item.findValue("id");
+            if (idNode != null && idNode.isNumber()) {
+                ids.add(idNode.asInt());
+            }
+        }
+        return ids;
     }
 
     private void invalidateWishlistIdsCache() {

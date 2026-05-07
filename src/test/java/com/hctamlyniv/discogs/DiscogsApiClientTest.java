@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -60,7 +61,7 @@ class DiscogsApiClientTest {
             if (rawQuery.contains("page=2")) {
                 Json.respond(ex, 200, """
                 {
-                  "pagination": { "items": 2 },
+                  "pagination": { "items": 2, "pages": 2 },
                   "wants": [
                     {
                       "basic_information": {
@@ -78,7 +79,7 @@ class DiscogsApiClientTest {
             }
             Json.respond(ex, 200, """
                 {
-                  "pagination": { "items": 1 },
+                  "pagination": { "items": 2, "pages": 2 },
                   "wants": [
                     {
                       "basic_information": {
@@ -94,9 +95,18 @@ class DiscogsApiClientTest {
                 }
                 """);
         });
-        server.createContext("/users/testuser/collection/folders/0/releases", ex -> Json.respond(ex, 200, """
-                { "releases": [ { "id": 321 } ] }
-                """));
+        server.createContext("/users/testuser/collection/folders/0/releases", ex -> {
+            String rawQuery = ex.getRequestURI().getRawQuery() == null ? "" : ex.getRequestURI().getRawQuery();
+            if (rawQuery.contains("page=2")) {
+                Json.respond(ex, 200, """
+                        { "pagination": { "pages": 2 }, "releases": [ { "id": 654 } ] }
+                        """);
+                return;
+            }
+            Json.respond(ex, 200, """
+                    { "pagination": { "pages": 2 }, "releases": [ { "id": 321 } ] }
+                    """);
+        });
         server.createContext("/database/search", ex -> {
             String rawQuery = ex.getRequestURI().getRawQuery() == null ? "" : ex.getRequestURI().getRawQuery();
             if (rawQuery.contains("barcode=")) {
@@ -187,7 +197,7 @@ class DiscogsApiClientTest {
     @Test
     void fetchWishlistParsesEntries() {
         WishlistResult wishlist = client.fetchWishlist("testuser", 1, 10);
-        assertEquals(1, wishlist.total());
+        assertEquals(2, wishlist.total());
         assertEquals(1, wishlist.items().size());
         assertEquals("Discovery", wishlist.items().get(0).title());
     }
@@ -225,8 +235,40 @@ class DiscogsApiClientTest {
     void fetchWishlistAndCollectionIdsWork() {
         Set<Integer> wants = client.fetchWishlistReleaseIds("testuser", 50);
         Set<Integer> collection = client.fetchCollectionReleaseIds("testuser", 50);
-        assertTrue(wants.contains(123));
-        assertTrue(collection.contains(321));
+        assertEquals(Set.of(123, 456), wants);
+        assertEquals(Set.of(321, 654), collection);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void parseLibraryReleaseIdsReadsWantlistAndCollectionShapes() throws Exception {
+        Method method = DiscogsApiClient.class.getDeclaredMethod(
+                "parseLibraryReleaseIds",
+                com.fasterxml.jackson.databind.JsonNode.class,
+                String.class
+        );
+        method.setAccessible(true);
+
+        ObjectMapper mapper = new ObjectMapper();
+        Set<Integer> wants = (Set<Integer>) method.invoke(client, mapper.readTree("""
+                {
+                  "wants": [
+                    { "basic_information": { "id": 123, "title": "Discovery" } },
+                    { "basic_information": { "id": 456, "title": "Homework" } }
+                  ]
+                }
+                """), "wants");
+        Set<Integer> collection = (Set<Integer>) method.invoke(client, mapper.readTree("""
+                {
+                  "releases": [
+                    { "id": 321, "basic_information": { "title": "Collected" } },
+                    { "id": 654, "basic_information": { "title": "Also Collected" } }
+                  ]
+                }
+                """), "releases");
+
+        assertEquals(Set.of(123, 456), wants);
+        assertEquals(Set.of(321, 654), collection);
     }
 
     @Test
