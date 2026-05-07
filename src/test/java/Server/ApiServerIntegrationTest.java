@@ -15,7 +15,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -84,18 +83,18 @@ class ApiServerIntegrationTest {
     }
 
     @Test
-    void playlistEndpointRequiresSpotifyLogin() throws Exception {
+    void playlistEndpointRejectsInvalidLimitBeforeSpotifyResolution() throws Exception {
         HttpResponse<String> resp = client.send(
-                HttpRequest.newBuilder(uri("/api/playlist?id=37i9dQZF1DXcBWIGoYBM5M&limit=5"))
+                HttpRequest.newBuilder(uri("/api/playlist?id=37i9dQZF1DXcBWIGoYBM5M&limit=not-a-number"))
                         .timeout(Duration.ofSeconds(5))
                         .GET()
                         .build(),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         );
 
-        assertEquals(401, resp.statusCode());
+        assertEquals(400, resp.statusCode());
         ApiErrorResponse parsed = mapper.readValue(resp.body(), ApiErrorResponse.class);
-        assertTrue(Set.of("spotify_login_required", "spotify_login_required_or_restricted").contains(parsed.error().code()));
+        assertEquals("invalid_limit", parsed.error().code());
     }
 
     @Test
@@ -239,7 +238,6 @@ class ApiServerIntegrationTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Disabled("Flaky test - server connection timing issue in test environment")
     void authCallbackErrorRendersHtml() throws Exception {
         HttpResponse<String> resp = client.send(
                 HttpRequest.newBuilder(uri("/api/auth/callback?error=access_denied"))
