@@ -1,3 +1,61 @@
+# VinylMatch TODO - 2026-05-07 Improvement + Feature Discovery
+
+## Goal
+- Commit the current working tree before analysis.
+- Review the backend, frontend, docs, and verification state for practical improvement opportunities.
+- Produce a ranked list of improvements and feature candidates without changing product code yet.
+
+## Implementation Checklist
+- [x] Commit the current working tree.
+- [x] Re-read project lessons and confirm the repo stack.
+- [x] Run the current Maven test phase.
+- [x] Inspect API usage, caching, route tests, frontend Discogs flow, and docs for improvement candidates.
+- [x] Summarize recommended next slices for Luis.
+
+## Verification Notes
+- Commit created: `4bd6189 Harden callbacks and refine responsive UI`.
+- Proof of current health: `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd test` passes with 114 tests, 0 failures, 1 skipped, and JaCoCo checks met.
+- Findings to consider next:
+  - Make `ApiServerIntegrationTest.playlistEndpointRequiresSpotifyLogin` deterministic; it currently can call Spotify when app credentials are present and logs a real upstream 404 while still passing.
+  - Re-enable or replace the disabled callback HTML test so auth popup rendering stays covered.
+  - Update stale README/audit docs: README still says sessions are memory-only despite Redis-backed stores, the coverage badge says 70% while JaCoCo gate is 40%, and the external API audit still references an old `mvn test` failure.
+  - Improve large Discogs library accuracy; library flags only fetch page 1 / 100 IDs today, so large wantlists/collections can show false negatives.
+  - Consider a user-facing match quality workflow: surface "exact/master/release/search fallback" confidence, let users filter low-confidence matches, and reuse the existing curation save path.
+  - Consider playlist analysis features: owned/wishlist/missing summary, estimated vinyl-shopping gap, exportable buylist, and vendor availability view.
+
+# VinylMatch TODO - 2026-05-07 First Four Improvement Fixes
+
+## Goal
+- Fix the first four improvement findings from the discovery pass.
+- Keep added calculations and load time small, especially for Discogs library checks.
+- Leave match quality and playlist analysis features for a future slice.
+
+## Implementation Checklist
+- [x] Make the Spotify playlist integration test deterministic without real upstream calls.
+- [x] Re-enable callback HTML coverage.
+- [x] Update stale README and external API audit notes.
+- [x] Improve Discogs library flag accuracy with capped pagination and short TTL reuse.
+- [x] Run focused and full verification.
+
+## Verification Notes
+- Focused Discogs client verification now passes: `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd "-Dtest=com.hctamlyniv.discogs.DiscogsApiClientTest" test`.
+- Full verification passes: `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd test` ran 115 tests, 0 failures, 0 errors, and JaCoCo checks met.
+
+# VinylMatch TODO - 2026-05-07 Discogs Library Pagination Parser Fix
+
+## Goal
+- Isolate Discogs library ID parsing from HTTP pagination fixtures.
+- Fix the focused capped-pagination test so paged wantlist and collection IDs are returned.
+
+## Implementation Checklist
+- [x] Review existing Discogs pagination client/test changes.
+- [x] Extract a small release-ID parser for paged Discogs library JSON.
+- [x] Add a direct unit test over static wantlist/collection JSON.
+- [x] Wire the parser into the HTTP paging method and run focused verification.
+
+## Verification Notes
+- `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd "-Dtest=com.hctamlyniv.discogs.DiscogsApiClientTest" test` passes with 14 tests, 0 failures, 0 errors, and JaCoCo checks met.
+
 # VinylMatch TODO - 2026-04-16 Homepage Copy Refresh
 
 ## Goal

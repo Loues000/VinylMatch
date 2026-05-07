@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/hctamlyniv/VinylMatch/actions/workflows/ci.yml/badge.svg)](https://github.com/hctamlyniv/VinylMatch/actions/workflows/ci.yml)
 [![Deploy](https://github.com/hctamlyniv/VinylMatch/actions/workflows/deploy.yml/badge.svg)](https://github.com/hctamlyniv/VinylMatch/actions/workflows/deploy.yml)
-[![Coverage](https://img.shields.io/badge/coverage-70%25-brightgreen.svg)](./pom.xml)
+[![Coverage](https://img.shields.io/badge/coverage-gated%20at%2040%25-green.svg)](./pom.xml)
 [![Java 21](https://img.shields.io/badge/Java-21-blue.svg)](https://openjdk.org/projects/jdk/21/)
 [![Runtime](https://img.shields.io/badge/runtime-java--jar-success.svg)](./pom.xml)
 
@@ -15,7 +15,7 @@ It's built for collectors, DJs, archivists, and anyone who wants to connect a di
 - Spotify OAuth login (hosted multi-user, session-cookie based)
 - Playlist import + track metadata extraction
 - Progressive Discogs matching with caching and safe fallbacks
-- Optional Discogs user token login (wishlist + library status)
+- Optional Discogs user token/OAuth login (wishlist + library status)
 - Custom vendor links via `config/vendors.json`
 - Built-in rate limiting and structured JSON error responses
 
@@ -274,7 +274,7 @@ The server exposes REST endpoints under `/api/*`.
 ## Notes
 
 - No Discogs token: matching falls back to Discogs web search URLs.
-- Sessions are stored in memory; restarting the server logs users out.
+- Sessions use Redis when configured and fall back to in-memory storage for local development.
 - The app only uses metadata; it does not download or store any audio.
 
 ## License

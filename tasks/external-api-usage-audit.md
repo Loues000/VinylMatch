@@ -81,11 +81,9 @@ on every call, and the UI triggers this on load, after login, after matches arri
 
 ## Notes / Remaining Risks
 
-- Library flags are still best-effort for large libraries:
-  - wantlist + collection ID lists only fetch page 1 (up to 100) today.
-  - If we need accurate flags for large libraries, implement paging with backoff and a server-side TTL cache.
+- Library flags are still best-effort for very large libraries:
+  - wantlist + collection ID lists fetch up to 3 pages of 100 IDs per short TTL cache window.
+  - This keeps repeat UI refreshes cheap while covering the first 300 wants/collection releases.
+  - If exact flags are needed for larger accounts, add a longer-lived background/user cache instead of expanding synchronous page fetches.
 
-- `mvn test` currently fails due to `Server.ApiServerIntegrationTest` errors unrelated to these changes (runtime `java.lang.Error: Unresolved compilation problems` referencing `ApiErrorResponse`).
-  - `mvn -DskipTests compile` succeeded.
-  - Targeted test `mvn -Dtest=DiscogsApiClientTest -Djacoco.skip=true test` succeeded.
-
+- Current verification: `mvn test` passes, including JaCoCo checks.
