@@ -1,8 +1,18 @@
 # Lessons Learned
 
+## 2026-04-16
+- When adding focused regression tests during a multi-file fix pass, run the compile/test phase immediately after each test file lands; small misses like a missing `StandardCharsets` import are cheaper to catch before more patches stack on top.
+- When hardening server-rendered callback HTML against injection, verify both the rendered markup path and any inline script path; escaping visible text alone is insufficient if the same value can still flow into script construction.
+
 ## 2026-03-28
+- When a user points to a specific responsive CSS snippet, verify the exact live block in the active stylesheet before claiming the breakpoint is fixed; base and variant files can both exist, and a stale read can miss the real override still in use.
+- For fixed headers that can grow taller at mobile breakpoints, shift the wrap breakpoint earlier than the last barely-fitting width and update page top padding in the same change; otherwise exact widths like `640px` will land in a cramped in-between state.
+- When a shared page has a base stylesheet plus a visual variant, recheck variant-only breakpoints after mobile tuning; an older variant `@media` block can reintroduce an unintended tablet layout even when the base CSS was already fixed.
+- For fixed-height side drawers that mix static controls with paged result cards, do not let the drawer itself own vertical scrolling; make the active panel fill the remaining height and cap page size to the viewport, or normal desktop layouts will show dead bottom space in sparse states and nested scrollbars in full states.
+- For mobile pages with fixed headers and floating utility buttons, always verify the narrowest breakpoint in a real browser screenshot; fixed-position controls should either reserve layout space or the header must wrap, otherwise they will overlap hero content/logo text even when desktop looks correct.
 - When a frontend boot regression appears to affect all JS-driven interactions, verify it once in a fresh browser profile before changing app code; if the source tree works there, suspect stale cached static assets and harden cache headers or asset versioning instead of chasing a nonexistent runtime bug.
 - For checked-in frontend `dist/` assets, verify every imported module is actually tracked with `git ls-files`; local builds can mask missing Git assets because untracked files still get copied into `target/frontend`, while clean CI/deploy checkouts will 404 those modules at runtime.
+- For clipped sidebar list hovers, avoid moving cards toward a drawer edge when the container intentionally hides overflow; keep the item in place and express hover emphasis with inset borders, color, or shadow so edge borders stay visible.
 
 ## 2026-03-27
 - For CI-hosted OWASP Dependency-Check runs, always wire the NVD API key from environment config and set a non-fatal update fallback; shared builder IPs get rate-limited often enough that unauthenticated NVD refreshes are not a reliable deploy gate.

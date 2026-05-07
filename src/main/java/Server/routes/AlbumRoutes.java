@@ -74,6 +74,8 @@ public class AlbumRoutes {
                     "totalAlbums", albums.size()
             ));
             
+        } catch (HttpUtils.RequestTooLargeException e) {
+            HttpUtils.sendApiError(exchange, 413, "payload_too_large", "Request body too large");
         } catch (Exception e) {
             log.warn("Album extraction failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "album_extraction_failed", "Failed to extract albums from tracks");

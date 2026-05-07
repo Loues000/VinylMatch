@@ -190,24 +190,26 @@ function bindSidebarTabKeyboard(tabs) {
                 return;
             }
             event.preventDefault();
-            if (!tabs.length) {
+            const enabledTabs = tabs.filter((candidate) => candidate instanceof HTMLButtonElement && !candidate.disabled);
+            const currentIndex = enabledTabs.indexOf(tab);
+            if (!enabledTabs.length || currentIndex === -1) {
                 return;
             }
-            let nextIndex = index;
+            let nextIndex = currentIndex;
             if (event.key === "ArrowRight") {
-                nextIndex = (index + 1) % tabs.length;
+                nextIndex = (currentIndex + 1) % enabledTabs.length;
             }
             else if (event.key === "ArrowLeft") {
-                nextIndex = (index - 1 + tabs.length) % tabs.length;
+                nextIndex = (currentIndex - 1 + enabledTabs.length) % enabledTabs.length;
             }
             else if (event.key === "Home") {
                 nextIndex = 0;
             }
             else if (event.key === "End") {
-                nextIndex = tabs.length - 1;
+                nextIndex = enabledTabs.length - 1;
             }
-            tabs[nextIndex].focus();
-            tabs[nextIndex].click();
+            enabledTabs[nextIndex].focus();
+            enabledTabs[nextIndex].click();
         });
     });
 }
@@ -222,12 +224,15 @@ window.addEventListener("DOMContentLoaded", () => {
         const sidebarToggle = document.getElementById("sidebar-toggle");
         const sidebar = document.getElementById("home-sidebar");
         const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+        const isVisibleFocusable = (node) => node instanceof HTMLElement &&
+            node.offsetParent !== null &&
+            !node.closest(".hidden,[aria-hidden='true']");
         const getFocusableInSidebar = () => {
             if (!sidebar) {
                 return [];
             }
             const nodes = sidebar.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
-            return Array.from(nodes).filter((node) => node instanceof HTMLElement && !node.classList.contains("hidden"));
+            return Array.from(nodes).filter(isVisibleFocusable);
         };
         let sidebarLastFocus = null;
         const setSidebarOpen = (open) => {
@@ -302,7 +307,10 @@ window.addEventListener("DOMContentLoaded", () => {
         const userNext = document.getElementById("user-next-page");
         const userPageInfo = document.getElementById("user-page-info");
         const userStatus = document.getElementById("user-status");
-        const USER_PAGE_SIZE = 9;
+        const getUserPageSize = () => {
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+            return Math.max(6, Math.min(9, Math.floor((viewportHeight - 408) / 62)));
+        };
         const collator = new Intl.Collator("de", { sensitivity: "base" });
         const userState = {
             items: new Map(),
@@ -313,7 +321,7 @@ window.addEventListener("DOMContentLoaded", () => {
             backgroundFailed: false,
             fullyLoaded: false,
             page: 1,
-            pageSize: USER_PAGE_SIZE,
+            pageSize: getUserPageSize(),
             query: "",
             sort: "name-asc",
         };
@@ -355,6 +363,16 @@ window.addEventListener("DOMContentLoaded", () => {
                 userControls.classList.toggle("hidden", !hasData);
             }
         };
+        const syncUserPageSize = () => {
+            const nextPageSize = getUserPageSize();
+            if (nextPageSize === userState.pageSize) {
+                return;
+            }
+            const currentStart = Math.max(0, (userState.page - 1) * userState.pageSize);
+            userState.pageSize = nextPageSize;
+            userState.page = Math.floor(currentStart / nextPageSize) + 1;
+            renderUserPlaylists();
+        };
         const renderUserPlaylists = () => {
             if (!userPanel || !userList || !userEmpty)
                 return;
@@ -365,8 +383,10 @@ window.addEventListener("DOMContentLoaded", () => {
                 userEmpty.textContent = "Log in with Spotify to see your playlists.";
                 userEmpty.classList.remove("hidden");
                 updateControlsVisibility(false);
-                if (userStatus)
+                if (userStatus) {
                     userStatus.textContent = "";
+                    userStatus.classList.add("hidden");
+                }
                 return;
             }
             userPanel.setAttribute("aria-disabled", "false");
@@ -421,15 +441,19 @@ window.addEventListener("DOMContentLoaded", () => {
             if (userStatus) {
                 if (userState.backgroundLoading) {
                     userStatus.textContent = `Loading more playlists… (${userState.items.size}/${userState.total || "?"})`;
+                    userStatus.classList.remove("hidden");
                 }
                 else if (!userState.fullyLoaded && userState.items.size > 0 && userState.total > userState.items.size) {
                     userStatus.textContent = `Loaded: ${userState.items.size} of ${userState.total}`;
+                    userStatus.classList.remove("hidden");
                 }
                 else if (userState.backgroundFailed) {
                     userStatus.textContent = "Additional playlists could not be fully loaded.";
+                    userStatus.classList.remove("hidden");
                 }
                 else {
                     userStatus.textContent = "";
+                    userStatus.classList.add("hidden");
                 }
             }
         };
@@ -571,6 +595,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 showHomeStatus(message, "error");
             }
         });
+        window.addEventListener("resize", syncUserPageSize);
         if (recentTab) {
             recentTab.addEventListener("click", (event) => {
                 event.preventDefault();
@@ -596,8 +621,8 @@ window.addEventListener("DOMContentLoaded", () => {
                 loadInitialUserPlaylists();
             });
         }
-        const enabledTabs = [recentTab, popularTab, userTab].filter((tab) => tab instanceof HTMLButtonElement && !tab.disabled);
-        bindSidebarTabKeyboard(enabledTabs);
+        const sidebarTabs = [recentTab, popularTab, userTab].filter((tab) => tab instanceof HTMLButtonElement);
+        bindSidebarTabKeyboard(sidebarTabs);
         toggleTab("recent-panel");
         const btn = document.getElementById("use-link");
         const ta = document.getElementById("playlist-url");

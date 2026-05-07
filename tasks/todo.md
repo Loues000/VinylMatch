@@ -1,3 +1,251 @@
+# VinylMatch TODO - 2026-04-16 Homepage Copy Refresh
+
+## Goal
+- Update the active homepage hero and input copy to the supplied tighter VinylMatch messaging.
+- Refresh the About page text so the product description, feature list, and technology line match the new positioning.
+- Keep the legacy hidden home variants aligned where they reuse the same homepage copy blocks.
+
+## Implementation Checklist
+- [x] Inspect the current active and legacy frontend templates that contain the copy.
+- [x] Update the hero, input instructions, and tip line in the homepage templates.
+- [x] Update the About page description, features, and technology presentation.
+- [x] Run focused verification and record the result.
+
+## Verification Notes
+- Updated `src/main/frontend/home.html` with the requested hero headline, tighter supporting copy, revised playlist-link instructions, and all-caps playlist-drawer tip.
+- Kept the hidden legacy home variants aligned by applying the same copy changes in `src/main/frontend/legacy/hidden/alpha/v3/home.html` and `src/main/frontend/legacy/hidden/alpha/v6/home.html`.
+- Refreshed `src/main/frontend/about.html` with the new product description, expanded feature blurbs, and uppercase technology labels.
+- Proof of work:
+  - `git diff --check -- tasks/todo.md src/main/frontend/home.html src/main/frontend/about.html src/main/frontend/legacy/hidden/alpha/v3/home.html src/main/frontend/legacy/hidden/alpha/v6/home.html`
+  - `rg -n "TURN SPOTIFY PLAYLISTS|INTO RECORDS WORTH OWNING|cross-references every track on Discogs|Official Spotify playlists require a direct URL|TIP: USE THE PLAYLIST DRAWER|bridges your digital playlists and the physical record world|persistent session support|maximize hit rate|Pick up right where you left off|VANILLA JS" src/main/frontend`
+
+# VinylMatch TODO - 2026-04-16 Branch Cleanup Review
+
+## Goal
+- Review all current local and remote branches against `origin/main`.
+- Identify which branches still appear active or needed, and which look safe to delete or prune.
+- Base the recommendation on merge status, divergence, branch age, and GitHub PR state where available.
+
+## Implementation Checklist
+- [x] Inventory current local and remote branches.
+- [x] Check each remote branch for merge/divergence relative to `origin/main`.
+- [x] Check whether any remote branches still back open or relevant PRs.
+- [x] Summarize branches to keep versus branches that look safe to remove.
+
+## Verification Notes
+- `git fetch --all --prune --tags` refreshed remote refs and pruned the already deleted `origin/dependabot/maven/redis.clients-jedis-7.4.0` branch.
+- Current git state is one local branch (`main`) plus fourteen remote `origin/dependabot/*` branches.
+- For every surviving remote branch, `git rev-list --left-right --count origin/main...<branch>` shows the branch is still one commit ahead of `origin/main`, and `git cherry origin/main <branch>` reports a unique patch rather than an equivalent change already present on `origin/main`.
+- GitHub PR checks show every surviving remote branch still backs an open Dependabot PR, so none of the current remote refs are orphaned leftovers.
+
+# VinylMatch TODO - 2026-04-16 Review Findings Fix Pass
+
+## Goal
+- Fix the concrete backend and frontend issues identified in the review, with minimal diffs and focused regression coverage.
+- Preserve unrelated in-progress frontend changes already present in the worktree.
+
+## Implementation Checklist
+- [x] Re-check the current dirty files and isolate the fix scope.
+- [x] Patch backend security/session issues: Discogs callback escaping, Spotify refresh persistence, request-body limit, and cache/session hardening where feasible.
+- [x] Patch frontend behavior issues: header narrow-width overlap, playlist album-extraction fallback, drawer focus filtering, tab keyboard behavior, visible neutral status messages, and missing user playlist status node.
+- [x] Add or update focused tests for backend behavior changes.
+- [x] Run proof-of-work checks and record the outcome.
+
+## Verification Notes
+- Backend:
+  - `src/main/java/Server/routes/DiscogsRoutes.java` now escapes callback HTML output and posts a structured callback payload without embedding raw user-controlled strings in inline script.
+  - `src/main/java/Server/routes/AuthRoutes.java` now persists refreshed Spotify sessions.
+  - `src/main/java/Server/http/HttpUtils.java` now enforces a bounded request-body read path, and the JSON POST routes that read request bodies now map oversized payloads to `413 payload_too_large`.
+  - `src/main/java/Server/session/SessionSerializer.java` now encrypts Spotify access/refresh tokens at rest with backward-compatible decrypt fallback.
+  - `src/main/java/Server/routes/PlaylistRoutes.java` no longer clears the shared playlist cache on every user-signature change.
+- Frontend:
+  - `src/main/frontend/common/header.css` now moves the wrapped two-row mobile header layout up to `600px`, which removes the reproduced ~`500px` overlap.
+  - `src/main/frontend/dist/playlist.js` now falls back to rendering all tracks if album extraction returns no albums.
+  - `src/main/frontend/dist/main.js` and `src/main/frontend/dist/playlist.js` now filter drawer focus targets by actual visibility, and home tab keyboard navigation now includes the `Yours` tab after login.
+  - `src/main/frontend/dist/playlist.js` now shows neutral Discogs guidance messages instead of clearing them immediately.
+  - `src/main/frontend/home.html` restores the `#user-status` node used by the existing home playlist-loading status logic.
+- Added focused tests:
+  - `src/test/java/Server/routes/AuthRoutesTest.java`
+  - `src/test/java/Server/routes/DiscogsRoutesTest.java`
+  - `src/test/java/Server/session/SessionSerializerTest.java`
+  - Updated `src/test/java/Server/http/HttpUtilsTest.java`
+- Proof of work:
+  - `node --check src/main/frontend/dist/main.js`
+  - `node --check src/main/frontend/dist/playlist.js`
+  - `git diff --check`
+  - `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd test`
+  - `npx playwright screenshot --viewport-size "500,900" http://127.0.0.1:4173/home.html tasks/header-500-check.png`
+
+# VinylMatch TODO - 2026-04-15 Frontend and Backend Review
+
+## Goal
+- Review the current frontend and backend implementation for concrete bugs, regressions, security issues, and missing verification.
+- Prioritize findings with file/line references and focus on issues that would affect users, deploys, or maintainability.
+
+## Review Checklist
+- [x] Inspect current worktree changes so the review does not confuse existing edits with baseline code.
+- [x] Review backend route, auth/session, HTTP, and external API handling for defects or regressions.
+- [x] Review frontend boot, playlist/home flows, API handling, accessibility, and responsive behavior for defects or regressions.
+- [x] Run focused verification commands where practical and record the outcome.
+- [x] Summarize findings in code-review format with severity and file references.
+
+## Verification Notes
+- Reviewed the dirty worktree first; current modified source files are frontend files plus task notes, with untracked screenshot/test artifacts already present under `tasks/` and `test-results/`.
+- Backend review covered auth/session refresh, Discogs callback rendering, request body handling, and playlist cache behavior.
+- Frontend review covered header breakpoints, playlist loading fallback, drawer focus handling, tab keyboard behavior, and user-facing status nodes/messages.
+- Proof of work:
+  - `node --check src/main/frontend/dist/main.js`
+  - `node --check src/main/frontend/dist/playlist.js`
+  - `node --check src/main/frontend/dist/playlist/discogs-ui.js`
+  - `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd test`
+  - `git diff --check`
+
+# VinylMatch TODO - 2026-04-09 Python Dead Code Sweep
+
+## Goal
+- Use `ruff` and `vulture` to detect dead Python code that is actually in scope for this repository.
+- Remove confirmed dead code with minimal diffs, or record a verified no-op if the repo contains no maintained Python sources.
+
+## Implementation Checklist
+- [x] Inspect the repo for tracked or intentionally maintained Python files and tool configuration.
+- [x] Install or invoke `ruff` and `vulture` in a reproducible way if they are not already present.
+- [x] Run the dead-code scan on the in-scope Python surface and review findings.
+- [x] Delete confirmed dead code or document why no cleanup was required.
+- [x] Run proof-of-work checks and record the outcome.
+
+## Verification Notes
+- `git ls-files "*.py"` returned no tracked Python files in the repository, so there is no in-scope Python application code for `ruff` or `vulture` to clean up.
+- The only repository-local `.py` files found by `rg --files -uu -g "*.py"` live under `.agents/skills/use-railway/scripts/`, and `git check-ignore -v .agents\skills\use-railway\scripts\dal.py` plus `git check-ignore -v .claude\skills\use-railway\scripts\analyze-postgres.py` confirmed that `.agents/` and `.claude/` are intentionally ignored local tooling trees.
+- `py -m pip install --user ruff vulture` confirmed both tools are available in the local Python user environment.
+- `py -m ruff check .` completed successfully and reported `No Python files found under the given path(s)`, which matches the tracked-file scan.
+- `py -m vulture . --exclude ".agents/,.claude/"` completed with no findings once the ignored local tooling trees were excluded from scope.
+- No code was deleted because the maintained repository contents do not include tracked Python files.
+
+# VinylMatch TODO - 2026-03-28 Playlist 640px Header Cleanup
+
+## Goal
+- Make the shared playlist header look intentional at `640px` wide instead of collapsing into an awkward wrapped state.
+- Keep the header and page top spacing aligned when the fixed header grows taller on narrow screens.
+
+## Implementation Checklist
+- [x] Inspect the current shared header and playlist top spacing at the `640px` breakpoint.
+- [x] Update the shared header mobile layout so the controls wrap cleanly without crowding the logo.
+- [x] Align the playlist page top padding with the taller wrapped header state.
+- [x] Run focused verification and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/common/header.css` now switches the shared header into its wrapped two-row layout at `700px` instead of waiting until `640px`, which gives the theme/about/auth controls enough horizontal room before the cramped tablet-width state appears.
+- `src/main/frontend/common/header.css` now adds a subtle divider and keeps the Spotify auth button pushed to the far right on the second row, so the narrow header reads as a deliberate stacked layout instead of an accidental wrap.
+- `src/main/frontend/styles/playlist.css` and `src/main/frontend/styles/playlist-variant4.css` now reserve extra top space for the taller fixed header on narrow screens, so the playlist content no longer sits too close to the header after the wrap kicks in.
+- Proof of work:
+  - `git diff --check -- src/main/frontend/common/header.css src/main/frontend/styles/playlist.css src/main/frontend/styles/playlist-variant4.css tasks/todo.md`
+  - `npx http-server src/main/frontend -p 4173 -c-1`
+  - `npx playwright screenshot --viewport-size "640,1200" --full-page http://127.0.0.1:4173/playlist.html tasks/playlist-header-640-after.png`
+
+# VinylMatch TODO - 2026-03-28 Playlist Mid-Width Responsive Fix
+
+## Goal
+- Remove the odd playlist mid-width responsive state around `770px` to `800px`.
+- Keep the playlist toolbar/header stable through tablet widths and reserve stacked mobile behavior for genuinely narrow screens.
+
+## Implementation Checklist
+- [x] Inspect the playlist responsive rules that still trigger around `820px`.
+- [x] Move any remaining variant-only mid-width layout shifts down to the real mobile breakpoint.
+- [x] Run a focused verification and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/styles/playlist-variant4.css` now keeps `.playlist-toolbar` on a single row through tablet widths by removing the variant-only wrapping behavior that was reintroducing a pseudo-mobile layout around `770px` to `800px`.
+- `src/main/frontend/styles/playlist-variant4.css` now applies the compact brutalist header padding/image treatment at `640px` instead of `820px`, so the playlist stays in its desktop/tablet presentation until the actual mobile breakpoint.
+- Proof of work:
+  - `git diff --check -- src/main/frontend/styles/playlist-variant4.css tasks/todo.md`
+  - `Get-Content src/main/frontend/styles/playlist-variant4.css | Select-Object -Skip 126 -First 14`
+  - `Get-Content src/main/frontend/styles/playlist-variant4.css | Select-Object -Skip 810 -First 48`
+
+# VinylMatch TODO - 2026-03-28 Header Navigation Hide Breakpoint
+
+## Goal
+- Keep the shared header navigation visible on medium-width screens instead of hiding it too early.
+- Preserve the existing wrapped mobile header layout on genuinely narrow screens.
+
+## Implementation Checklist
+- [x] Inspect the shared header breakpoint rules controlling when the left navigation disappears.
+- [x] Move the hide breakpoint so it aligns with the narrow mobile layout instead of the tablet-width layout.
+- [x] Run a focused verification and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/common/header.css` now keeps `.navigation-left` visible until `640px` instead of hiding it at `820px`, so header links remain available on medium-width screens like small tablets and narrow desktop windows.
+- The existing wrapped mobile header behavior remains tied to the same `640px` breakpoint, so the nav only disappears once the compact two-row mobile layout takes over.
+- Proof of work:
+  - `git diff -- src/main/frontend/common/header.css tasks/todo.md`
+  - `Get-Content src/main/frontend/common/header.css | Select-Object -Skip 160 -First 80`
+
+# VinylMatch TODO - 2026-03-28 Playlist Mobile Navigation + Breakpoint Tuning
+
+## Goal
+- Make the shared header logo a reliable tap target back to the home page on mobile.
+- Keep the playlist toolbar on one row until extremely narrow screens, then let it stack cleanly.
+- Move the playlist track-card compact layout breakpoint from `900px` to `600px`.
+- Keep the brutalist variant stylesheet aligned with those same mobile breakpoints so it does not override the fix.
+
+## Implementation Checklist
+- [x] Inspect the shared header markup/styles and the playlist mobile breakpoint rules.
+- [x] Update the header logo to link back to `/home.html` and preserve existing styling.
+- [x] Adjust playlist toolbar and track-list breakpoints to match the requested mobile behavior.
+- [x] Run focused verification and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/common/header.html` and `src/main/frontend/common/header.css` now make the `VINYL MATCH` logo a real `/home.html` link with hover/focus states, so mobile users have a consistent route back home even after the left nav is hidden.
+- `src/main/frontend/styles/playlist.css` now switches the compact track-card layout at `600px` instead of `900px`, so the wider two-column card layout stays active on medium mobile/tablet widths.
+- `src/main/frontend/styles/playlist.css` now stacks `.playlist-toolbar` only at `300px` and below, stretching both the Discogs toggle and view toggle to full width only at that extreme breakpoint.
+- `src/main/frontend/styles/playlist-variant4.css` now follows the same `600px` track breakpoint and `300px` toolbar-stacking breakpoint, so the brutalist variant no longer overrides the requested layout.
+- Proof of work:
+  - `git diff --check -- src/main/frontend/common/header.html src/main/frontend/common/header.css src/main/frontend/styles/playlist.css tasks/todo.md`
+  - `npx http-server src/main/frontend -p 4173 -c-1`
+  - `npx playwright screenshot --viewport-size "300,900" --full-page http://127.0.0.1:4173/playlist.html tasks/playlist-mobile-300-check.png`
+  - `npx playwright screenshot --viewport-size "600,900" --full-page http://127.0.0.1:4173/playlist.html tasks/playlist-mobile-600-check.png`
+
+# VinylMatch TODO - 2026-03-28 Mobile Header + Home Drawer Collision Fix
+
+## Goal
+- Prevent the `Open playlists` trigger from overlapping the home hero card on narrow mobile screens.
+- Prevent the header theme toggle from colliding with the VinylMatch logo on narrow mobile screens.
+- Keep the existing brutalist home/header look intact while making the mobile layout fit cleanly.
+
+## Implementation Checklist
+- [x] Inspect the shared header and home mobile breakpoint rules that control the collisions.
+- [x] Update the mobile header layout so the logo and right-side controls can stack without overlap.
+- [x] Reposition the mobile home drawer trigger so it stays clear of both the header and the hero card.
+- [x] Run focused verification and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/common/header.css` now switches the shared header to a wrapped two-row layout below `640px`, with tighter spacing for the theme/about/auth controls.
+- `src/main/frontend/styles/home.css` now anchors the `Open playlists` trigger to the bottom-left corner below `540px`, keeping it reachable without consuming hero space.
+- `src/main/frontend/styles/home.css` keeps the current visible hero badge at `v1.3` for the updated mobile presentation.
+- Proof of work:
+  - `npx http-server src/main/frontend -p 4173 -c-1`
+  - `npx playwright screenshot --device="iPhone 12" http://127.0.0.1:4173/home.html tasks/mobile-home-check.png`
+
+# VinylMatch TODO - 2026-03-28 Home Sidebar Bottom Gap + Yours Overflow
+
+## Goal
+- Remove the dead space at the bottom of the home sidebar when a tab has little content.
+- Prevent the home sidebar itself from scrolling on normal desktop heights when the `Yours` tab is populated.
+
+## Implementation Checklist
+- [x] Inspect the current home drawer height and panel sizing rules.
+- [x] Make the sidebar a fixed-height flex column with the active panel filling the remaining vertical space.
+- [x] Adjust `Yours` pagination density to the available viewport height so the drawer stays non-scrollable on normal desktop heights.
+- [x] Run focused frontend verification and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/styles/home.css` now pins the drawer to the viewport height, removes the drawer's own scroll path, and lets the active sidebar panel/list fill the remaining vertical space instead of leaving a dead bottom gap.
+- `src/main/frontend/dist/main.js` now derives the `Yours` page size from viewport height (`6`-`9` rows) and recalculates it on resize so populated user-playlist pages stay within the drawer on normal desktop heights while using available space more efficiently.
+- `src/main/frontend/styles/home.css` now forces the page-count label to stay dark in light mode and light in dark mode.
+- Proof of work:
+  - `node --check src\main\frontend\dist\main.js`
+  - `java -jar target\VinylMatch.jar` with `PORT=8891` to confirm the app still boots locally
+  - `git diff --check -- src/main/frontend/styles/home.css src/main/frontend/dist/main.js tasks/todo.md`
+
 # VinylMatch TODO - 2026-03-28 Frontend Boot Regression
 
 ## Goal
@@ -816,3 +1064,71 @@ Reduce maintenance noise in `home.css` by removing repetitive `:root[data-home-v
 - [x] Keep legacy Variant 3 selectors untouched.
 - [x] Verify served `home.css` no longer contains Variant 4 root-prefix selectors.
 
+# VinylMatch TODO - 2026-03-28 Home Desktop Sidebar Top Padding
+
+## Goal
+- Set the desktop home sidebar top padding to exactly `70px`.
+- Keep the existing mobile drawer spacing unchanged.
+
+## Implementation Checklist
+- [x] Inspect the current home sidebar desktop and mobile padding rules.
+- [x] Update the desktop sidebar top padding to `70px` without changing the mobile override.
+- [x] Run a focused diff/syntax verification and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/styles/home.css` now uses a fixed desktop `.sidebar { padding-top: 70px; }` in the active home variant instead of a viewport-based clamp, so the drawer starts at a consistent offset on desktop.
+- `src/main/frontend/styles/home.css` keeps the mobile `@media (max-width: 540px)` sidebar override at `120px`, so the narrow-screen drawer spacing is unchanged.
+- `src/main/frontend/styles/home.css` also bumps the visible home badge from `v1.1` to `v1.2` because the home design changed again.
+- Proof of work:
+  - `git diff --check -- src/main/frontend/styles/home.css tasks/todo.md`
+
+# VinylMatch TODO - 2026-03-28 Home Sidebar Hover Clipping Fix
+
+## Goal
+- Prevent hovered playlist rows in the home sidebar from sliding underneath the drawer border.
+- Keep the current variant 4 sidebar look while preserving a clear hover state.
+
+## Implementation Checklist
+- [x] Inspect the active home sidebar hover and overflow rules causing the clipping.
+- [x] Update the hover styling so playlist rows stay fully inside the drawer bounds.
+- [x] Run focused verification and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/styles/home.css` now keeps hovered `.recent-item` cards inside the sidebar by removing the rightward slide and using an inset accent stripe for feedback instead, so the right border no longer disappears behind the drawer edge.
+- `src/main/frontend/styles/home.css` also bumps the visible home badge from `v1.2` to `v1.3` because the active home sidebar interaction changed.
+- Proof of work:
+  - `git diff --check -- src/main/frontend/styles/home.css tasks/todo.md`
+  - `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd package`
+# VinylMatch TODO - 2026-03-28 Playlist Header Image Range Fix
+
+## Goal
+- Keep the full-width playlist header image behavior only on mid-width screens down to `640px`.
+- Restore the normal default playlist cover sizing below `640px`.
+
+## Implementation Checklist
+- [x] Inspect the active playlist variant rule overriding `#playlist-header img`.
+- [x] Restrict that override to the intended `641px` to `820px` range.
+- [x] Run a focused verification and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/styles/playlist-variant4.css` now applies the full-width `#playlist-header img` override only between `641px` and `820px`, so widths below `640px` fall back to the default square cover sizing from the base playlist stylesheet.
+- Proof of work:
+  - `git diff --check -- src/main/frontend/styles/playlist-variant4.css tasks/todo.md`
+  - `Get-Content src/main/frontend/styles/playlist-variant4.css | Select-Object -Skip 844 -First 16`
+# VinylMatch TODO - 2026-03-28 Playlist Header Image Breakpoint Correction
+
+## Goal
+- Apply the playlist header's wide image treatment only from `641px` to `820px`.
+- Let sub-`640px` screens use the normal base playlist header image sizing again.
+
+## Implementation Checklist
+- [x] Verify which playlist stylesheet is actually loaded by `playlist.html`.
+- [x] Move the `#playlist-header img` override out of the active `max-width: 640px` block in the loaded variant stylesheet.
+- [x] Run a focused diff check and record the outcome.
+
+## Verification Notes
+- `src/main/frontend/playlist.html` loads both `playlist.css` and `playlist-variant4.css`, and sets `document.documentElement.dataset.playlistVariant = "4"`, so Variant 4 is the active playlist design.
+- `src/main/frontend/styles/playlist-variant4.css` now keeps the `max-width: 640px` block for spacing only, and applies the wide `#playlist-header img` rule only at `641px` to `820px`.
+- Proof of work:
+  - `git diff --check -- src/main/frontend/styles/playlist-variant4.css tasks/todo.md tasks/lessons.md`
+  - `Get-Content src/main/frontend/styles/playlist-variant4.css | Select-Object -Skip 832 -First 28`

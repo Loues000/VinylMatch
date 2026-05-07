@@ -5,6 +5,8 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URLDecoder;
@@ -19,6 +21,7 @@ import java.util.Set;
  */
 public final class HttpUtils {
 
+    private static final int DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024;
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Set<String> ALLOWED_ORIGINS = buildAllowedOrigins();
 
@@ -57,7 +60,27 @@ public final class HttpUtils {
     }
 
     public static String readRequestBody(HttpExchange exchange) throws IOException {
-        return new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        return readRequestBody(exchange, DEFAULT_MAX_REQUEST_BODY_BYTES);
+    }
+
+    public static String readRequestBody(HttpExchange exchange, int maxBytes) throws IOException {
+        if (maxBytes <= 0) {
+            throw new IllegalArgumentException("maxBytes must be positive");
+        }
+        try (InputStream input = exchange.getRequestBody();
+             ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(maxBytes, 8192))) {
+            byte[] buffer = new byte[8192];
+            int total = 0;
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                if (total + read > maxBytes) {
+                    throw new RequestTooLargeException("Request body exceeds " + maxBytes + " bytes");
+                }
+                output.write(buffer, 0, read);
+                total += read;
+            }
+            return output.toString(StandardCharsets.UTF_8);
+        }
     }
 
     public static Integer intValue(Object value) {
@@ -243,6 +266,12 @@ public final class HttpUtils {
             return lowerHost.equals("discogs.com") || lowerHost.endsWith(".discogs.com");
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    public static final class RequestTooLargeException extends IOException {
+        public RequestTooLargeException(String message) {
+            super(message);
         }
     }
 }

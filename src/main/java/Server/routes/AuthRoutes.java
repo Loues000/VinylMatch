@@ -246,9 +246,8 @@ public class AuthRoutes {
         // Try session-based token first
         SpotifySession session = sessionStore.getSession(exchange);
         if (session != null && session.isLoggedIn()) {
-            // Refresh if needed
             if (session.isTokenExpired()) {
-                oauthService.refreshAccessToken(session);
+                refreshAndPersistSession(session);
             }
             String token = session.getAccessToken();
             if (token != null && !token.isBlank()) {
@@ -267,7 +266,7 @@ public class AuthRoutes {
         SpotifySession session = sessionStore.getSession(exchange);
         if (session != null && session.isLoggedIn()) {
             if (session.isTokenExpired()) {
-                oauthService.refreshAccessToken(session);
+                refreshAndPersistSession(session);
             }
             String token = session.getAccessToken();
             if (token != null && !token.isBlank()) {
@@ -280,6 +279,21 @@ public class AuthRoutes {
             return new AccessTokenResolution(appToken, false);
         }
         return new AccessTokenResolution(null, false);
+    }
+
+    private boolean refreshAndPersistSession(SpotifySession session) {
+        if (session == null) {
+            return false;
+        }
+        boolean refreshed = oauthService.refreshAccessToken(session);
+        if (refreshed) {
+            try {
+                sessionStore.storeSession(session);
+            } catch (Exception e) {
+                log.warn("Failed to persist refreshed Spotify session: {}", e.getMessage());
+            }
+        }
+        return refreshed;
     }
 
     /**

@@ -116,7 +116,6 @@ public class PlaylistRoutes {
             boolean userAuthenticated = tokenResolution.userAuthenticated();
 
             String userSignature = authRoutes.getUserSignature(exchange);
-            playlistCache.invalidateForAuthChange(userSignature);
             cacheKey = new PlaylistCacheKey(id, userSignature, offset, limit);
             DiscogsService discogsService = discogsServiceSupplier.get();
 

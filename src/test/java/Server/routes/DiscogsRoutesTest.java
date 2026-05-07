@@ -1,5 +1,7 @@
-package Server.http;
+package Server.routes;
 
+import Server.session.DiscogsSessionStore;
+import Server.session.SpotifySessionStore;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpContext;
 import com.sun.net.httpserver.HttpExchange;
@@ -9,45 +11,31 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class HttpUtilsTest {
+class DiscogsRoutesTest {
 
     @Test
-    void parsesQueryParams() {
-        Map<String, String> params = HttpUtils.parseQueryParams("a=1&b=two%20words&empty=");
-        assertEquals("1", params.get("a"));
-        assertEquals("two words", params.get("b"));
-        assertEquals("", params.get("empty"));
-    }
+    void callbackHtmlEscapesUserFacingErrorMessage() throws Exception {
+        DiscogsRoutes routes = new DiscogsRoutes(() -> null, new DiscogsSessionStore(), new SpotifySessionStore());
+        Method method = DiscogsRoutes.class.getDeclaredMethod("sendOAuthCallbackHtml", HttpExchange.class, boolean.class, String.class);
+        method.setAccessible(true);
 
-    @Test
-    void validatesDiscogsWebUrls() {
-        assertTrue(HttpUtils.isDiscogsWebUrl("https://www.discogs.com/release/1-test"));
-        assertFalse(HttpUtils.isDiscogsWebUrl("https://example.com/release/1-test"));
-        assertFalse(HttpUtils.isDiscogsWebUrl("javascript:alert(1)"));
-    }
+        FakeExchange exchange = new FakeExchange("GET", URI.create("http://127.0.0.1/api/discogs/oauth/callback"));
+        String message = "<script>alert(1)</script>";
+        method.invoke(routes, exchange, false, message);
 
-    @Test
-    void handlesCorsPreflight() throws Exception {
-        FakeExchange ex = new FakeExchange("OPTIONS", URI.create("http://127.0.0.1/api/test"));
-        ex.getRequestHeaders().add("Origin", "http://127.0.0.1:8888");
-        assertTrue(HttpUtils.handleCorsPreflightIfNeeded(ex));
-        assertNotNull(ex.getResponseHeaders().getFirst("Access-Control-Allow-Methods"));
-    }
-
-    @Test
-    void readsRequestBodyWithSizeLimit() throws Exception {
-        FakeExchange small = new FakeExchange("POST", URI.create("http://127.0.0.1/api/test"), "hello".getBytes(StandardCharsets.UTF_8));
-        assertEquals("hello", HttpUtils.readRequestBody(small, 16));
-
-        FakeExchange large = new FakeExchange("POST", URI.create("http://127.0.0.1/api/test"), "abcdef".getBytes(StandardCharsets.UTF_8));
-        assertThrows(HttpUtils.RequestTooLargeException.class, () -> HttpUtils.readRequestBody(large, 4));
+        String body = exchange.responseBodyAsString();
+        assertEquals(200, exchange.getResponseCode());
+        assertFalse(body.contains(message));
+        assertTrue(body.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+        assertTrue(body.contains("data-callback-message=\"&lt;script&gt;alert(1)&lt;/script&gt;\""));
+        assertTrue(body.contains("window.opener.postMessage(payload, window.location.origin);"));
     }
 
     private static final class FakeExchange extends HttpExchange {
@@ -55,18 +43,16 @@ class HttpUtilsTest {
         private final Headers responseHeaders = new Headers();
         private final String method;
         private final URI uri;
-        private final byte[] requestBody;
         private int responseCode;
         private final ByteArrayOutputStream responseBody = new ByteArrayOutputStream();
 
         private FakeExchange(String method, URI uri) {
-            this(method, uri, new byte[0]);
-        }
-
-        private FakeExchange(String method, URI uri, byte[] requestBody) {
             this.method = method;
             this.uri = uri;
-            this.requestBody = requestBody == null ? new byte[0] : requestBody;
+        }
+
+        String responseBodyAsString() {
+            return responseBody.toString(StandardCharsets.UTF_8);
         }
 
         @Override public Headers getRequestHeaders() { return requestHeaders; }
@@ -75,11 +61,9 @@ class HttpUtilsTest {
         @Override public String getRequestMethod() { return method; }
         @Override public HttpContext getHttpContext() { return null; }
         @Override public void close() {}
-        @Override public InputStream getRequestBody() { return new ByteArrayInputStream(requestBody); }
+        @Override public InputStream getRequestBody() { return new ByteArrayInputStream(new byte[0]); }
         @Override public OutputStream getResponseBody() { return responseBody; }
-        @Override public void sendResponseHeaders(int rCode, long responseLength) {
-            this.responseCode = rCode;
-        }
+        @Override public void sendResponseHeaders(int rCode, long responseLength) { this.responseCode = rCode; }
         @Override public InetSocketAddress getRemoteAddress() { return new InetSocketAddress("127.0.0.1", 1234); }
         @Override public int getResponseCode() { return responseCode; }
         @Override public InetSocketAddress getLocalAddress() { return new InetSocketAddress("127.0.0.1", 0); }

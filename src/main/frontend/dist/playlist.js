@@ -53,9 +53,12 @@ function setupDiscogsDrawer() {
         return;
     }
     toggle.dataset.bound = "true";
+    const isVisibleFocusable = (node) => node instanceof HTMLElement &&
+        node.offsetParent !== null &&
+        !node.closest(".hidden,[aria-hidden='true']");
     const getFocusableInSidebar = () => {
         const nodes = sidebar.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
-        return Array.from(nodes).filter((node) => node instanceof HTMLElement && !node.classList.contains("hidden"));
+        return Array.from(nodes).filter(isVisibleFocusable);
     };
     let sidebarLastFocus = null;
     const setOpen = (open) => {
@@ -132,7 +135,7 @@ function setPlaylistStatus(message, tone = "neutral") {
         clearTimeout(playlistStatusTimer);
         playlistStatusTimer = null;
     }
-    if (!message || tone === "neutral") {
+    if (!message) {
         node.textContent = "";
         node.classList.add("hidden");
         node.classList.remove("error", "success");
@@ -447,16 +450,10 @@ async function extractAlbumsFromTracks(tracks) {
 // Auto-select all albums without showing modal
 async function handleAlbumSelection(tracks) {
     const albums = await extractAlbumsFromTracks(tracks);
-    
-    if (albums.length === 0) {
-        return [];
-    }
-    
     state.albums = albums;
-    // Auto-select all albums
-    state.selectedAlbums = albums;
+    // Auto-select all albums, but fall back to all tracks when extraction yields no albums.
+    state.selectedAlbums = albums.length > 0 ? albums : null;
     state.albumSelectionComplete = true;
-    
     return albums;
 }
 
@@ -535,15 +532,10 @@ async function loadPlaylist(id, pageSize = DEFAULT_PAGE_SIZE) {
             
             // Auto-select all albums
             const selectedAlbums = await handleAlbumSelection(state.aggregated.tracks);
-            
+            const filteredTracks = selectedAlbums.length > 0 ? getTracksForSelectedAlbums() : state.aggregated.tracks;
             if (selectedAlbums.length === 0) {
-                container.textContent = "No albums selected. Please select at least one album to continue.";
-                setPlaylistStatus("No albums selected.", "error");
-                return;
+                setPlaylistStatus("Album extraction unavailable. Showing all tracks.");
             }
-            
-            // Now render only tracks from selected albums and start Discogs search
-            const filteredTracks = getTracksForSelectedAlbums();
             
             // Update the aggregated tracks for display
             state.aggregated = {

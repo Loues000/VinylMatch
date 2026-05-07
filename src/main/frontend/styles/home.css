@@ -448,6 +448,14 @@ body::after {
     padding: 6px 2px;
 }
 
+#user-page-info {
+    color: #0a0a0a;
+}
+
+:root[data-theme="dark"] #user-page-info {
+    color: #f5f5f0;
+}
+
 .user-pagination.hidden {
     display: none;
 }
@@ -1206,8 +1214,13 @@ body::after {
     border-right: clamp(3px, 0.5vw, 4px) solid #ff3300;
     box-shadow: none;
     top: 0;
-    padding-top: clamp(70px, 10vh, 90px);
+    bottom: auto;
+    height: 100vh;
+    height: 100dvh;
+    padding-top: 70px;
+    padding-bottom: clamp(16px, 2.4vh, 22px);
     width: clamp(280px, 30vw, 336px);
+    overflow: hidden;
 }
 
 :root[data-theme="dark"] .sidebar {
@@ -1266,6 +1279,9 @@ body::after {
     background: #111;
     border: 2px solid #333;
     border-radius: 0;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
 }
 
 :root[data-theme="dark"] .sidebar-panel {
@@ -1288,7 +1304,8 @@ body::after {
 .recent-item:hover {
     border-color: #ff3300;
     background: #111;
-    transform: translateX(4px);
+    transform: translateX(0);
+    box-shadow: inset 4px 0 0 #ff3300;
 }
 
 :root[data-theme="dark"] .recent-item:hover {
@@ -1355,7 +1372,7 @@ body::after {
 }
 
 .hero-logo-wrap::after {
-    content: "v1.0";
+    content: "v1.3";
     position: absolute;
     top: -1px;
     right: -1px;
@@ -1404,6 +1421,13 @@ body::after {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
+    overflow: hidden;
+}
+
+.recent-list,
+#user-playlist-list {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: hidden;
 }
 
@@ -1559,8 +1583,24 @@ body::after {
 }
 
 @media (max-width: 540px) {
+    body {
+        height: auto;
+        min-height: 100vh;
+        min-height: 100dvh;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .page-container {
+        padding: 82px 0 14px;
+    }
+
     .home-main {
-        padding: 60px 12px 14px;
+        height: auto;
+        min-height: 0;
+        justify-content: flex-start;
+        padding: 0 12px 14px;
+        overflow: visible;
     }
 
     #playlist-url {
@@ -1583,5 +1623,23 @@ body::after {
     .actions .btn {
         width: 100%;
         min-height: 46px;
+    }
+
+    .sidebar-toggle {
+        position: fixed;
+        top: auto;
+        left: 12px;
+        bottom: 14px;
+        display: inline-flex;
+        margin: 0;
+        min-width: 116px;
+        padding: 9px 12px;
+        z-index: 1200;
+    }
+
+    .sidebar {
+        top: 0;
+        padding-top: 120px;
+        width: min(88vw, var(--vm-home-sidebar-width));
     }
 }

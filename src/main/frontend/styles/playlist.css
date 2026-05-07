@@ -942,7 +942,7 @@ body {
 /* ============================================================================
    Responsive
    ========================================================================== */
-@media (max-width: 900px) {
+@media (max-width: 600px) {
     body {
         padding: 84px 16px 32px;
     }
@@ -971,6 +971,10 @@ body {
 }
 
 @media (max-width: 640px) {
+    body {
+        padding-top: 112px;
+    }
+
     #playlist-header {
         flex-direction: column;
         align-items: flex-start;
@@ -979,5 +983,21 @@ body {
     #playlist-header img {
         width: 120px;
         height: 120px;
+    }
+}
+
+@media (max-width: 300px) {
+    .playlist-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sidebar-toggle,
+    .view-toggle {
+        width: 100%;
+    }
+
+    .view-toggle-btn {
+        flex: 1 1 0;
     }
 }

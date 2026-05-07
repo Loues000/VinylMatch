@@ -169,6 +169,8 @@ public class DiscogsRoutes {
             }
 
             HttpUtils.sendJson(exchange, 200, Map.of("results", results));
+        } catch (HttpUtils.RequestTooLargeException e) {
+            HttpUtils.sendApiError(exchange, 413, "payload_too_large", "Request body too large");
         } catch (Exception e) {
             log.warn("Discogs batch failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_batch_failed", "Discogs batch search failed");
@@ -208,6 +210,8 @@ public class DiscogsRoutes {
             }
 
             HttpUtils.sendJson(exchange, 200, Map.of("url", urlOpt.get()));
+        } catch (HttpUtils.RequestTooLargeException e) {
+            HttpUtils.sendApiError(exchange, 413, "payload_too_large", "Request body too large");
         } catch (Exception e) {
             log.warn("Discogs search failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_search_failed", "Discogs search failed");
@@ -275,6 +279,8 @@ public class DiscogsRoutes {
             response.put("username", session.username());
             response.put("name", session.displayName());
             HttpUtils.sendJson(exchange, 200, response);
+        } catch (HttpUtils.RequestTooLargeException e) {
+            HttpUtils.sendApiError(exchange, 413, "payload_too_large", "Request body too large");
         } catch (Exception e) {
             log.warn("Discogs login failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_login_failed", "Discogs login failed");
@@ -483,6 +489,8 @@ public class DiscogsRoutes {
                     "added", true,
                     "releaseId", releaseId
             ));
+        } catch (HttpUtils.RequestTooLargeException e) {
+            HttpUtils.sendApiError(exchange, 413, "payload_too_large", "Request body too large");
         } catch (Exception e) {
             log.warn("Discogs wantlist add failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_wantlist_add_failed", "Failed to add to Discogs wantlist");
@@ -546,6 +554,8 @@ public class DiscogsRoutes {
             }
 
             HttpUtils.sendJson(exchange, 200, Map.of("results", results));
+        } catch (HttpUtils.RequestTooLargeException e) {
+            HttpUtils.sendApiError(exchange, 413, "payload_too_large", "Request body too large");
         } catch (Exception e) {
             log.warn("Discogs library status failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_library_failed", "Failed to load Discogs library status");
@@ -585,6 +595,8 @@ public class DiscogsRoutes {
             List<CurationCandidate> candidates = discogs.fetchCurationCandidates(
                     artist, album, year, trackTitle, 4);
             HttpUtils.sendJson(exchange, 200, Map.of("candidates", candidates));
+        } catch (HttpUtils.RequestTooLargeException e) {
+            HttpUtils.sendApiError(exchange, 413, "payload_too_large", "Request body too large");
         } catch (Exception e) {
             log.warn("Discogs curation candidates failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_curation_failed", "Failed to load curation candidates");
@@ -636,6 +648,8 @@ public class DiscogsRoutes {
             
             log.info("Saved curated link: {} -> {}", normalizedKey, safeUrl);
             HttpUtils.sendJson(exchange, 200, Map.of("saved", true, "cacheKey", normalizedKey, "entry", link));
+        } catch (HttpUtils.RequestTooLargeException e) {
+            HttpUtils.sendApiError(exchange, 413, "payload_too_large", "Request body too large");
         } catch (Exception e) {
             log.warn("Discogs curation save failed: {}", e.getMessage());
             HttpUtils.sendApiError(exchange, 500, "discogs_curation_save_failed", "Failed to save curated link");
@@ -717,18 +731,7 @@ public class DiscogsRoutes {
         String status = success ? "Discogs Login Successful" : "Discogs Login Failed";
         String color = success ? "#1f7a3f" : "#b23333";
         String action = success ? "Closing window..." : "You can close this window.";
-        String script = success ? """
-                if (window.opener) {
-                    window.opener.postMessage({ type: 'discogs-auth-callback', success: true }, '*');
-                    setTimeout(function () { window.close(); }, 600);
-                } else {
-                    setTimeout(function () { window.location.href = '/playlist.html'; }, 1200);
-                }
-                """ : """
-                if (window.opener) {
-                    window.opener.postMessage({ type: 'discogs-auth-callback', success: false, message: %s }, '*');
-                }
-                """.formatted(toJsStringLiteral(message));
+        String safeMessage = escapeHtml(message);
 
         String html = """
                 <!DOCTYPE html>
@@ -746,21 +749,47 @@ public class DiscogsRoutes {
                     </style>
                 </head>
                 <body>
-                    <main class="card">
+                    <main class="card" data-callback-message="%s">
                         <h1>%s</h1>
                         <p>%s</p>
                         <p class="muted">%s</p>
                     </main>
-                    <script>%s</script>
+                    <script>
+                        (function() {
+                            var success = %s;
+                            var payload = { type: 'discogs-auth-callback', success: success };
+                            var card = document.querySelector('[data-callback-message]');
+                            if (card && !success) {
+                                var callbackMessage = card.getAttribute('data-callback-message');
+                                if (callbackMessage) {
+                                    payload.message = callbackMessage;
+                                }
+                            }
+
+                            if (window.opener) {
+                                window.opener.postMessage(payload, window.location.origin);
+                            }
+
+                            if (success) {
+                                setTimeout(function () {
+                                    window.close();
+                                    if (!window.closed) {
+                                        window.location.href = '/playlist.html';
+                                    }
+                                }, 600);
+                            }
+                        }());
+                    </script>
                 </body>
                 </html>
                 """.formatted(
                 status,
                 color,
+                safeMessage,
                 status,
-                message == null ? "" : message,
+                safeMessage,
                 action,
-                script
+                success
         );
 
         byte[] body = html.getBytes(StandardCharsets.UTF_8);
@@ -771,15 +800,16 @@ public class DiscogsRoutes {
         }
     }
 
-    private static String toJsStringLiteral(String value) {
+    private static String escapeHtml(String value) {
         if (value == null) {
-            return "\"\"";
+            return "";
         }
-        return "\"" + value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\r", "\\r")
-                .replace("\n", "\\n") + "\"";
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 
     private Integer parseYear(Object value) {
