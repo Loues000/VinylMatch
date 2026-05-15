@@ -61,6 +61,10 @@ jobs:
     needs: build-release-artifact
     if: github.ref == 'refs/heads/develop'
     environment: staging
+    env:
+      STAGING_SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+      STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+      STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
 
     steps:
     - name: Download release artifact
@@ -70,22 +74,22 @@ jobs:
         path: ./release
 
     - name: Upload jar to staging host
-      if: secrets.STAGING_SSH_HOST != ''
+      if: env.STAGING_SSH_HOST != ''
       uses: appleboy/scp-action@v1.0.0
       with:
-        host: ${{ secrets.STAGING_SSH_HOST }}
-        username: ${{ secrets.STAGING_SSH_USER }}
-        key: ${{ secrets.STAGING_SSH_KEY }}
+        host: ${{ env.STAGING_SSH_HOST }}
+        username: ${{ env.STAGING_SSH_USER }}
+        key: ${{ env.STAGING_SSH_KEY }}
         source: ./release/VinylMatch.jar
         target: /opt/vinylmatch
 
     - name: Restart staging service
-      if: secrets.STAGING_SSH_HOST != ''
+      if: env.STAGING_SSH_HOST != ''
       uses: appleboy/ssh-action@v1.0.3
       with:
-        host: ${{ secrets.STAGING_SSH_HOST }}
-        username: ${{ secrets.STAGING_SSH_USER }}
-        key: ${{ secrets.STAGING_SSH_KEY }}
+        host: ${{ env.STAGING_SSH_HOST }}
+        username: ${{ env.STAGING_SSH_USER }}
+        key: ${{ env.STAGING_SSH_KEY }}
         script: |
           sudo install -m 0644 /opt/vinylmatch/release/VinylMatch.jar /opt/vinylmatch/VinylMatch.jar
           sudo systemctl restart vinylmatch-staging
@@ -98,6 +102,10 @@ jobs:
     - publish-github-release
     if: startsWith(github.ref, 'refs/tags/v')
     environment: production
+    env:
+      PRODUCTION_SSH_HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+      PRODUCTION_SSH_USER: ${{ secrets.PRODUCTION_SSH_USER }}
+      PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
 
     steps:
     - name: Download release artifact
@@ -107,22 +115,22 @@ jobs:
         path: ./release
 
     - name: Upload jar to production host
-      if: secrets.PRODUCTION_SSH_HOST != ''
+      if: env.PRODUCTION_SSH_HOST != ''
       uses: appleboy/scp-action@v1.0.0
       with:
-        host: ${{ secrets.PRODUCTION_SSH_HOST }}
-        username: ${{ secrets.PRODUCTION_SSH_USER }}
-        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        host: ${{ env.PRODUCTION_SSH_HOST }}
+        username: ${{ env.PRODUCTION_SSH_USER }}
+        key: ${{ env.PRODUCTION_SSH_KEY }}
         source: ./release/VinylMatch.jar
         target: /opt/vinylmatch
 
     - name: Restart production service
-      if: secrets.PRODUCTION_SSH_HOST != ''
+      if: env.PRODUCTION_SSH_HOST != ''
       uses: appleboy/ssh-action@v1.0.3
       with:
-        host: ${{ secrets.PRODUCTION_SSH_HOST }}
-        username: ${{ secrets.PRODUCTION_SSH_USER }}
-        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        host: ${{ env.PRODUCTION_SSH_HOST }}
+        username: ${{ env.PRODUCTION_SSH_USER }}
+        key: ${{ env.PRODUCTION_SSH_KEY }}
         script: |
           sudo install -m 0644 /opt/vinylmatch/release/VinylMatch.jar /opt/vinylmatch/VinylMatch.jar
           sudo systemctl restart vinylmatch

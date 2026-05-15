@@ -1,3 +1,23 @@
+# VinylMatch TODO - 2026-05-15 Dependabot PR Merge Pass
+
+## Goal
+- Merge open Dependabot PRs that are green and safe enough to accept.
+- Leave failing or risky PRs unmerged with a clear note.
+- Verify the local repository state after merges.
+
+## Implementation Checklist
+- [x] Confirm open PR status and changed files.
+- [x] Merge green low-risk dependency PRs with rebase merge.
+- [x] Skip failing PRs and record why.
+- [x] Fetch/prune and verify local status.
+
+## Verification Notes
+- Merged PRs with rebase merge and branch deletion: #26, #29, #31, #32, #33, #37, #38, #39, #40, #42, #43, #44.
+- Left open because GitHub CI is failing: #35 `ch.qos.logback:logback-classic 1.5.6 -> 1.5.32`, #36 `ch.qos.logback:logback-core 1.5.6 -> 1.5.32`.
+- Local verification after pulling updated `main`: `.\.tools\maven\apache-maven-3.9.6\bin\mvn.cmd test` passed with 115 tests, 0 failures, 0 errors, and JaCoCo checks met.
+- Follow-up from GitHub notifications: deploy workflow failures predated this merge pass and were caused by workflow validation before jobs started. Patched `.github/workflows/deploy.yml` locally to avoid `if: secrets.*` and gate deploy steps via job env values instead.
+- Local workflow patch checks: `git diff --check -- .github/workflows/deploy.yml tasks/todo.md` passed; `Select-String -Path .github\workflows\deploy.yml -Pattern 'if: secrets\.'` returns no matches.
+
 # VinylMatch TODO - 2026-05-07 Improvement + Feature Discovery
 
 ## Goal

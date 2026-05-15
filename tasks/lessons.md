@@ -4,6 +4,9 @@
 - When changing paginated API fixture metadata, update all tests that assert pagination totals and add focused assertions for multi-page ID aggregation; otherwise a product fix can look broken because the fixture and expectation describe different totals.
 - When caching freshly fetched third-party ID sets, return the fetched set immediately after storing it; otherwise the happy path can silently fall through to an empty fallback even though HTTP pagination and parsing succeeded.
 
+## 2026-05-15
+- GitHub Actions workflows must not reference `secrets.*` directly in `if:` expressions; copy needed secrets into job-level `env` values and gate steps on `env.*` so the workflow validates before jobs start.
+
 ## 2026-04-16
 - When adding focused regression tests during a multi-file fix pass, run the compile/test phase immediately after each test file lands; small misses like a missing `StandardCharsets` import are cheaper to catch before more patches stack on top.
 - When hardening server-rendered callback HTML against injection, verify both the rendered markup path and any inline script path; escaping visible text alone is insufficient if the same value can still flow into script construction.
